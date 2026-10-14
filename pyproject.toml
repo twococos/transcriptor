@@ -1,10 +1,69 @@
 [project]
 name = "transcriptor"
-version = "0.0.1"
+version = "0.1.0"
 description = "De l'àudio a lletra + acords sincronitzats per a El Cançoner (guitarreo.cat)"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
-dependencies = []
+dependencies = [
+    "numpy>=2.0",
+    "scipy>=1.13",
+    "soundfile>=0.13",
+    "soxr>=0.5",
+    "librosa>=0.11",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "requests>=2.32",
+    "yt-dlp[default]>=2026.8",
+    "imageio-ffmpeg>=0.6",
+    "demucs>=4.1",
+    "beat-this>=1.1",
+    "faster-whisper>=1.2",
+]
+
+[project.optional-dependencies]
+# PyTorch: cal triar exactament un dels dos extres (uv sync --extra cpu | --extra cuda)
+cpu = ["torch>=2.6", "torchaudio>=2.6"]
+cuda = ["torch>=2.6", "torchaudio>=2.6"]
+# Separació amb Mel-RoFormer (perfil GPU)
+roformer = ["audio-separator>=0.47"]
+# Afinament de l'alineació amb wav2vec2 català (CTC)
+ctc = ["transformers>=4.50"]
+# App d'escriptori de Windows (Fase 7)
+app = ["pystray>=0.19", "pillow>=10.0"]
+
+[project.scripts]
+tx = "transcriptor.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.uv]
+# Només Windows (app) i Linux (servidor/Docker), x86_64
+environments = [
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+conflicts = [[{ extra = "cpu" }, { extra = "cuda" }]]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu126", extra = "cuda" },
+]
+torchaudio = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu126", extra = "cuda" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
 
 [build-system]
 requires = ["hatchling"]
@@ -12,3 +71,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/transcriptor"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

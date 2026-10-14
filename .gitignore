@@ -18,3 +18,4 @@ models/
 *.pth
 *.ckpt
 *.onnx
+uv.lock.bak
