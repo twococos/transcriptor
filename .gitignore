@@ -1,0 +1,20 @@
+# Entorns i caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Dades generades: àudio, resultats i models
+work/
+out/
+models/
+*.wav
+*.mp3
+*.m4a
+*.webm
+*.opus
+*.flac
+*.pt
+*.pth
+*.ckpt
+*.onnx
