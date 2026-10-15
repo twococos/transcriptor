@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="ca">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visor de sincronització</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --text: #1d1d1b; --muted: #6d6a64; --line: #e2dfd8;
+  --accent: #c2410c; --accent-soft: #fde7d9; --beat: #2563eb; --beat-soft: #dbe6fd;
+  --word: #15803d; --word-soft: #dcf2e3; --warn: #b45309; --sec-a: #efe9fb; --sec-b: #e6f1f6;
+  --mark: #be123c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161614; --panel: #201f1d; --text: #ecebe7; --muted: #9a968e; --line: #34322e;
+    --accent: #fb923c; --accent-soft: #4a2a17; --beat: #60a5fa; --beat-soft: #1c2a44;
+    --word: #4ade80; --word-soft: #173322; --warn: #fbbf24; --sec-a: #2a2538; --sec-b: #1f2e35;
+    --mark: #fb7185;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1180px; margin: 0 auto; padding: 16px; }
+header h1 { font-size: 20px; margin: 0; }
+header .meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
+details.avisos { margin-top: 6px; font-size: 13px; color: var(--warn); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.fila { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#reproductor { margin-top: 12px; display: grid; gap: 10px; }
+#yt { width: 100%; max-width: 480px; aspect-ratio: 16/9; }
+#yt:empty { display: none; }
+audio { width: 100%; }
+button, select, input[type=number] { font: inherit; font-size: 13px; color: var(--text); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px; }
+button { cursor: pointer; }
+button.on { background: var(--accent-soft); border-color: var(--accent); }
+input[type=number] { width: 72px; }
+label { font-size: 13px; color: var(--muted); display: inline-flex; gap: 5px; align-items: center; }
+.temps { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); min-width: 120px; }
+#zonaFitxer { border: 2px dashed var(--line); border-radius: 10px; padding: 14px; text-align: center; color: var(--muted); }
+#zonaFitxer.sobre { border-color: var(--accent); }
+
+#viu { margin-top: 12px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 760px) { #viu { grid-template-columns: 1fr; } }
+.titolet { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.gran { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.petit { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#punts { display: flex; gap: 8px; margin: 8px 0 4px; }
+#punts span { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--beat); transition: background .06s; }
+#punts span.u { width: 30px; height: 30px; margin-top: -3px; }
+#punts span.actiu { background: var(--beat); }
+#acord.cop, #punts span.cop { animation: cop .18s ease-out; }
+@keyframes cop { from { transform: scale(1.18); } to { transform: scale(1); } }
+#acord { color: var(--accent); display: inline-block; }
+#acord.cap { color: var(--muted); }
+
+#lletra { margin-top: 10px; min-height: 150px; }
+.linia { padding: 3px 0; font-size: 18px; color: var(--muted); min-height: 1.6em; }
+.linia.actual { font-size: 26px; color: var(--text); }
+.linia .mot { display: inline-block; position: relative; padding: 18px 3px 0; border-radius: 4px; }
+.linia:not(.actual) .mot { padding-top: 0; }
+.linia .mot.futur { opacity: .45; }
+.linia .mot.ara { background: var(--word-soft); color: var(--word); }
+.linia .mot.dubte { text-decoration: underline dotted var(--warn) 2px; }
+.linia .mot .ac { position: absolute; top: 0; left: 3px; font-size: 13px; font-weight: 700; color: var(--accent); }
+.seccio { font-size: 12px; color: var(--muted); }
+
+#lineaTemps { margin-top: 10px; }
+canvas { width: 100%; height: 230px; display: block; cursor: pointer; }
+.llegenda { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+#notes { margin-top: 10px; }
+#notes ol { margin: 6px 0 0; padding-left: 20px; }
+#notes li { margin: 3px 0; font-size: 13px; }
+#notes li a { color: var(--mark); cursor: pointer; font-variant-numeric: tabular-nums; }
+#notes li input { width: min(420px, 60%); font: inherit; border: 1px solid var(--line); background: var(--bg);
+  color: var(--text); border-radius: 5px; padding: 2px 6px; }
+kbd { font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; background: var(--bg); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="titol">Visor de sincronització</h1>
+    <div class="meta" id="meta">Carregant l'anàlisi…</div>
+    <details class="avisos" id="avisos" hidden><summary></summary><ul></ul></details>
+  </header>
+
+  <section id="reproductor" class="panel">
+    <div id="yt"></div>
+    <div id="contenidorAudio"></div>
+    <div id="zonaFitxer">Arrossega aquí un fitxer d'àudio (o un altre <code>analysis.json</code>) ·
+      <label><input type="file" id="triaFitxer" accept="audio/*,video/*,.json"></label></div>
+    <div class="fila">
+      <button id="bPlay">▶ Reprodueix</button>
+      <button id="bEnrere">« 5 s</button>
+      <button id="bEndavant">5 s »</button>
+      <span class="temps" id="temps">0:00.0</span>
+      <label>Velocitat <select id="velocitat">
+        <option>0.5</option><option>0.75</option><option selected>1</option><option>1.25</option></select></label>
+      <label title="Positiu: l'anàlisi es mostra més tard respecte de l'àudio">Desplaçament
+        <input type="number" id="desplacament" value="0" step="10"> ms</label>
+      <button id="bClic" title="Tecla C">Clic de pulsació</button>
+      <button id="bAcords" title="Tecla A">Acords sonors</button>
+    </div>
+  </section>
+
+  <section id="viu">
+    <div class="panel">
+      <div class="titolet">Compàs</div>
+      <div class="gran" id="compas">—</div>
+      <div id="punts"></div>
+      <div class="petit" id="infoPuls"></div>
+    </div>
+    <div class="panel">
+      <div class="titolet">Acord</div>
+      <div class="gran"><span id="acord" class="cap">—</span></div>
+      <div class="petit" id="infoAcord"></div>
+    </div>
+    <div class="panel">
+      <div class="titolet">Secció</div>
+      <div class="gran" id="seccio" style="font-size:28px">—</div>
+      <div class="petit" id="infoParaula"></div>
+    </div>
+  </section>
+
+  <section id="lletra" class="panel">
+    <div class="titolet">Lletra <span class="seccio" id="fontLletra"></span></div>
+    <div class="linia" id="liniaAnt"></div>
+    <div class="linia actual" id="liniaAct"></div>
+    <div class="linia" id="liniaSeg"></div>
+  </section>
+
+  <section id="lineaTemps" class="panel">
+    <canvas id="tl"></canvas>
+    <div class="llegenda">Clica per saltar · roda del ratolí per fer zoom ·
+      franges: seccions, acords (opacitat = confiança), pulsacions (línia llarga = inici de compàs), paraules
+      (subratllat taronja = confiança &lt; 0.5) · línies verticals fines = inicis de compàs</div>
+  </section>
+
+  <section id="notes" class="panel">
+    <div class="fila"><span class="titolet" style="flex:1">Notes d'errors</span>
+      <button id="bNota">+ Nota aquí (M)</button><button id="bCopia">Copia</button><button id="bBuida">Esborra-les</button></div>
+    <ol id="llistaNotes"></ol>
+    <div class="petit" style="margin-top:6px">Tecles: <kbd>Espai</kbd> reprodueix/pausa · <kbd>←</kbd>/<kbd>→</kbd> ±2 s
+      (<kbd>Maj</kbd>: ±1 pulsació) · <kbd>M</kbd> nota · <kbd>C</kbd> clic · <kbd>A</kbd> acords sonors</div>
+  </section>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let A = null;            // analysis.json
+let info = { json: "" }; // del servidor
+let jugador = null;      // { temps(), play(), pause(), aturat(), salta(t), velocitat(r), nom }
+let desplacament = 0;    // s
+let zoom = 12;           // segons visibles a la línia de temps
+let notes = [];
+
+// ---------- utilitats ----------
+const fmt = (t) => { if (!isFinite(t)) return "—"; const s = Math.max(0, t);
+  return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`; };
+/** Índex de l'últim element amb clau(x) <= t, o -1. */
+function ultimFins(arr, t, clau) { let lo = 0, hi = arr.length - 1, r = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (clau(arr[m]) <= t) { r = m; lo = m + 1; } else hi = m - 1; }
+  return r; }
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// ---------- càrrega ----------
+async function inicia() {
+  try { info = await (await fetch("info.json")).json(); } catch (e) { /* obert sense servidor */ }
+  try { carregaAnalisi(await (await fetch("analysis.json")).json()); }
+  catch (e) { $("meta").textContent = "No s'ha pogut carregar analysis.json: arrossega'n un a la pàgina."; return; }
+  if (info.audio) usaAudio("audio", info.audio);
+  else if (A.source && A.source.youtube_id) usaYouTube(A.source.youtube_id);
+}
+
+function carregaAnalisi(dades) {
+  A = dades;
+  A.beats = A.beats || []; A.chords = A.chords || []; A.words = A.words || [];
+  A.lines = A.lines || []; A.sections = A.sections || [];
+  const m = A.meta || {}, ts = (A.tempo && A.tempo.time_signature) || [4, 4];
+  $("titol").textContent = [m.title, m.artist].filter(Boolean).join(" — ") || "Cançó sense títol";
+  document.title = (m.title || "Visor") + " · visor";
+  const parts = [];
+  if (A.key) parts.push(`to ${A.key.tonic}${A.key.mode === "minor" ? "m" : ""} (${A.key.confidence})`);
+  if (A.tempo) parts.push(`${A.tempo.bpm} BPM`, `${ts[0]}/${ts[1]}`);
+  if (A.capo_suggerit) parts.push(`capo ${A.capo_suggerit}`);
+  parts.push(`${A.beats.length} pulsacions`, `${A.chords.length} acords`, `${A.words.length} paraules`);
+  if (A.models && A.models.lyrics_aparellades) parts.push(`aparellades ${A.models.lyrics_aparellades}`);
+  $("meta").textContent = parts.join(" · ");
+  $("fontLletra").textContent = `· font: ${A.lyrics_source}${A.models && A.models.lyrics_align ? " · alineació: " + A.models.lyrics_align : ""}`;
+  const av = $("avisos");
+  if (A.avisos && A.avisos.length) {
+    av.hidden = false; av.querySelector("summary").textContent = `${A.avisos.length} avís/avisos`;
+    av.querySelector("ul").innerHTML = A.avisos.map((a) => `<li>${esc(a)}</li>`).join("");
+  } else av.hidden = true;
+  $("punts").innerHTML = Array.from({ length: ts[0] }, (_, i) => `<span class="${i === 0 ? "u" : ""}"></span>`).join("");
+  // acords per paraula de cada línia (com quedaria al content)
+  A._acordsParaula = A.words.map(() => []);
+  for (const c of A.chords) {
+    const i = ultimFins(A.words, c.start + 1e-6, (w) => w.start);
+    if (i >= 0 && c.start < (A.words[i + 1] ? A.words[i + 1].start : A.words[i].end + 1)) A._acordsParaula[i].push(c.label);
+  }
+  estat.liniaPintada = null;
+  carregaNotes(); pintaNotes();
+}
+
+// ---------- reproductors ----------
+function usaAudio(url, nom) {
+  if (jugador && jugador.destrueix) jugador.destrueix();
+  $("yt").innerHTML = "";
+  const a = document.createElement("audio");
+  a.controls = true; a.preload = "auto"; a.src = url;
+  $("contenidorAudio").replaceChildren(a);
+  $("zonaFitxer").style.display = "none";
+  jugador = { nom: nom || "àudio local", temps: () => a.currentTime, play: () => a.play(), pause: () => a.pause(),
+    aturat: () => a.paused, salta: (t) => { a.currentTime = Math.max(0, t); },
+    velocitat: (r) => { a.playbackRate = r; }, destrueix: () => { a.pause(); a.remove(); } };
+  a.playbackRate = +$("velocitat").value;
+  const t = tInicial(); if (t) a.addEventListener("loadedmetadata", () => { a.currentTime = t; }, { once: true });
+}
+/** `#t=83.5` a l'URL: comença en aquest punt. */
+const tInicial = () => +((/t=([\d.]+)/.exec(location.hash) || [])[1] || 0);
+
+function usaYouTube(id) {
+  $("zonaFitxer").firstChild.textContent = "Vídeo de YouTube (sincronització aproximada, ±50 ms). Per a més precisió, arrossega aquí l'àudio · ";
+  const crea = () => {
+    const p = new YT.Player("yt", { videoId: id, playerVars: { rel: 0, playsinline: 1, modestbranding: 1 },
+      events: { onReady: () => { p.setPlaybackRate(+$("velocitat").value); if (tInicial()) p.seekTo(tInicial(), true); } } });
+    // getCurrentTime() avança a salts: s'interpola amb el rellotge mentre sona
+    let rep = -1, quan = 0;
+    jugador = { nom: "YouTube",
+      temps: () => { const r = p.getCurrentTime ? p.getCurrentTime() || 0 : 0, ara = performance.now();
+        if (r !== rep) { rep = r; quan = ara; return r; }
+        return p.getPlayerState && p.getPlayerState() === 1 ? r + (ara - quan) / 1000 * p.getPlaybackRate() : r; },
+      play: () => p.playVideo(), pause: () => p.pauseVideo(),
+      aturat: () => !p.getPlayerState || p.getPlayerState() !== 1,
+      salta: (t) => p.seekTo(Math.max(0, t), true), velocitat: (r) => p.setPlaybackRate(r),
+      destrueix: () => { try { p.destroy(); } catch (e) { } } };
+  };
+  if (window.YT && YT.Player) crea();
+  else { window.onYouTubeIframeAPIReady = crea;
+    const s = document.createElement("script"); s.src = "https://www.youtube.com/iframe_api"; document.head.append(s); }
+}
+
+function fitxerRebut(f) {
+  if (!f) return;
+  if (f.name.toLowerCase().endsWith(".json")) {
+    f.text().then((t) => { info.json = f.name; carregaAnalisi(JSON.parse(t)); });
+  } else usaAudio(URL.createObjectURL(f), f.name);
+}
+$("triaFitxer").onchange = (e) => fitxerRebut(e.target.files[0]);
+document.addEventListener("dragover", (e) => { e.preventDefault(); $("zonaFitxer").classList.add("sobre"); });
+document.addEventListener("dragleave", () => $("zonaFitxer").classList.remove("sobre"));
+document.addEventListener("drop", (e) => { e.preventDefault(); $("zonaFitxer").classList.remove("sobre");
+  [...e.dataTransfer.files].forEach(fitxerRebut); });
+
+// ---------- so: clic de pulsació i acords ----------
+let ctx = null;
+const so = { clic: false, acords: false, programats: [] };
+function ctxAudio() { if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)(); if (ctx.state === "suspended") ctx.resume(); return ctx; }
+function clic(quan, fort) {
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.frequency.value = fort ? 1760 : 1100;
+  g.gain.setValueAtTime(fort ? 0.5 : 0.28, quan); g.gain.exponentialRampToValueAtTime(0.001, quan + 0.05);
+  o.connect(g).connect(ctx.destination); o.start(quan); o.stop(quan + 0.06); so.programats.push(o);
+}
+const NOTES = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+const QUALITATS = [["m7b5", [0, 3, 6, 10]], ["maj7", [0, 4, 7, 11]], ["dim7", [0, 3, 6, 9]], ["dim", [0, 3, 6]],
+  ["aug", [0, 4, 8]], ["sus2", [0, 2, 7]], ["sus4", [0, 5, 7]], ["m7", [0, 3, 7, 10]], ["m6", [0, 3, 7, 9]],
+  ["m", [0, 3, 7]], ["7", [0, 4, 7, 10]], ["6", [0, 4, 7, 9]], ["", [0, 4, 7]]];
+function notesAcord(label) {
+  const m = /^([A-G])([#b]?)([^/]*)(?:\/([A-G][#b]?))?$/.exec(label);
+  if (!m) return null;
+  const arrel = (NOTES[m[1]] + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0) + 12) % 12;
+  const q = (QUALITATS.find(([k]) => m[3].startsWith(k)) || ["", [0, 4, 7]])[1];
+  const baix = 40 + ((arrel - 4 + 12) % 12);           // entre E2 i D#3
+  return [baix, ...q.map((iv) => 52 + ((arrel + iv - 4 + 12) % 12))].map((n) => 440 * 2 ** ((n - 69) / 12));
+}
+function sonaAcord(quan, label, durada) {
+  const fs = notesAcord(label); if (!fs) return;
+  const d = Math.min(Math.max(durada, 0.4), 2.5);
+  fs.forEach((f, i) => {
+    const o = ctx.createOscillator(), g = ctx.createGain(), t0 = quan + i * 0.018;
+    o.type = "triangle"; o.frequency.value = f;
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(i === 0 ? 0.16 : 0.09, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + d);
+    o.connect(g).connect(ctx.destination); o.start(t0); o.stop(t0 + d + 0.05); so.programats.push(o);
+  });
+}
+// Programació amb antelació (més precís que fer sonar al frame)
+const prog = { beat: 0, acord: 0, ultimT: null, ultimRellotge: 0 };
+function reiniciaProgramacio(t) {
+  so.programats.forEach((o) => { try { o.stop(); } catch (e) { } }); so.programats = [];
+  prog.beat = ultimFins(A.beats, t, (b) => b.t) + 1;
+  prog.acord = ultimFins(A.chords, t, (c) => c.start) + 1;
+}
+function programaSo(t, sonant) {
+  const ara = performance.now(), rate = +$("velocitat").value;
+  if (prog.ultimT !== null) {
+    const esperat = prog.ultimT + (sonant ? (ara - prog.ultimRellotge) / 1000 * rate : 0);
+    if (Math.abs(t - esperat) > 0.25) reiniciaProgramacio(t);
+  } else reiniciaProgramacio(t);
+  prog.ultimT = t; prog.ultimRellotge = ara;
+  if (!sonant || !(so.clic || so.acords) || !ctx) { if (!sonant) prog.ultimT = null; return; }
+  const finestra = 0.15 * rate;
+  while (prog.beat < A.beats.length && A.beats[prog.beat].t < t + finestra) {
+    const b = A.beats[prog.beat++];
+    if (so.clic && b.t >= t - 0.02) clic(ctx.currentTime + Math.max(0, (b.t - t) / rate), b.beat === 1);
+  }
+  while (prog.acord < A.chords.length && A.chords[prog.acord].start < t + finestra) {
+    const c = A.chords[prog.acord++];
+    if (so.acords && c.start >= t - 0.02) sonaAcord(ctx.currentTime + Math.max(0, (c.start - t) / rate), c.label, (c.end - c.start) / rate);
+  }
+}
+function commuta(clau, boto) { so[clau] = !so[clau]; boto.classList.toggle("on", so[clau]); ctxAudio(); prog.ultimT = null; }
+$("bClic").onclick = () => commuta("clic", $("bClic"));
+$("bAcords").onclick = () => commuta("acords", $("bAcords"));
+
+// ---------- controls ----------
+const tAnalisi = () => jugador ? jugador.temps() - desplacament : 0;
+$("bPlay").onclick = () => { if (!jugador) return; ctxAudio(); jugador.aturat() ? jugador.play() : jugador.pause(); };
+$("bEnrere").onclick = () => jugador && jugador.salta(jugador.temps() - 5);
+$("bEndavant").onclick = () => jugador && jugador.salta(jugador.temps() + 5);
+$("velocitat").onchange = (e) => jugador && jugador.velocitat(+e.target.value);
+$("desplacament").oninput = (e) => { desplacament = (+e.target.value || 0) / 1000; prog.ultimT = null; };
+function saltaPulsacio(dir) {
+  const t = tAnalisi(), i = dir > 0 ? ultimFins(A.beats, t + 0.02, (b) => b.t) + 1 : ultimFins(A.beats, t - 0.05, (b) => b.t);
+  const b = A.beats[Math.max(0, Math.min(A.beats.length - 1, i))];
+  if (b) jugador.salta(b.t + desplacament);
+}
+document.addEventListener("keydown", (e) => {
+  if (e.target.matches("input, select, textarea") || !jugador || !A) return;
+  if (e.code === "Space") { e.preventDefault(); $("bPlay").click(); }
+  else if (e.code === "ArrowLeft") { e.preventDefault(); e.shiftKey ? saltaPulsacio(-1) : jugador.salta(jugador.temps() - 2); }
+  else if (e.code === "ArrowRight") { e.preventDefault(); e.shiftKey ? saltaPulsacio(1) : jugador.salta(jugador.temps() + 2); }
+  else if (e.key === "m" || e.key === "M") afegeixNota();
+  else if (e.key === "c" || e.key === "C") $("bClic").click();
+  else if (e.key === "a" || e.key === "A") $("bAcords").click();
+});
+
+// ---------- vista en directe ----------
+const estat = { beat: -1, acord: -2, liniaPintada: null };
+function actualitza(t) {
+  $("temps").textContent = `${fmt(t + desplacament)} / ${fmt(A.source && A.source.duration_s)}`;
+  // pulsació i compàs
+  const ib = ultimFins(A.beats, t, (b) => b.t);
+  if (ib !== estat.beat) {
+    estat.beat = ib;
+    const b = A.beats[ib], punts = $("punts").children;
+    $("compas").textContent = !b ? "—" : b.bar === 0 ? "Anacrusi" : `${b.bar}`;
+    [...punts].forEach((p, i) => { p.classList.toggle("actiu", !!b && i === b.beat - 1); p.classList.remove("cop"); });
+    if (b && punts[b.beat - 1]) { void punts[b.beat - 1].offsetWidth; punts[b.beat - 1].classList.add("cop"); }
+    const seg = A.beats[ib + 1];
+    $("infoPuls").textContent = b ? `pulsació ${b.beat} · ${seg ? `interval ${(seg.t - b.t).toFixed(2)} s ≈ ${Math.round(60 / (seg.t - b.t))} BPM` : "última"}` : "";
+  }
+  // acord
+  let ic = ultimFins(A.chords, t, (c) => c.start);
+  if (ic >= 0 && t >= A.chords[ic].end) ic = -1 - ic - 1;   // entre acords: negatiu
+  if (ic !== estat.acord) {
+    estat.acord = ic;
+    const c = ic >= 0 ? A.chords[ic] : null, el = $("acord");
+    el.textContent = c ? c.label : "—"; el.classList.toggle("cap", !c);
+    el.classList.remove("cop"); void el.offsetWidth; if (c) el.classList.add("cop");
+  }
+  const cAct = ic >= 0 ? A.chords[ic] : null;
+  const cSeg = A.chords[ultimFins(A.chords, t, (c) => c.start) + 1];
+  $("infoAcord").textContent = (cAct ? `conf ${cAct.conf.toFixed(2)} · compàs ${cAct.bar ?? "?"}.${cAct.beat ?? "?"} · ` : "")
+    + (cSeg ? `següent ${cSeg.label} en ${(cSeg.start - t).toFixed(1)} s` : "fi");
+  // secció (la més recent que ha començat)
+  const is = ultimFins(A.sections, t, (s) => s.start), s = A.sections[is];
+  $("seccio").textContent = s && t < s.end ? s.name : "—";
+  // paraula
+  const iw = ultimFins(A.words, t, (w) => w.start), w = A.words[iw];
+  const wAra = w && t < w.end ? w : null;
+  $("infoParaula").textContent = wAra ? `«${wAra.text}» ${fmt(wAra.start)}–${fmt(wAra.end)}${wAra.conf != null ? ` · conf ${wAra.conf.toFixed(2)}` : ""}` : "";
+  pintaLletra(t, iw, !!wAra);
+}
+
+function htmlLinia(l, t, iw, actual) {
+  if (!l) return "";
+  let h = "";
+  for (let i = l.word_range[0]; i < l.word_range[1]; i++) {
+    const w = A.words[i], cls = ["mot"];
+    if (actual) { if (i === iw && t < w.end) cls.push("ara"); else if (w.start > t) cls.push("futur"); }
+    if (w.conf != null && w.conf < 0.5) cls.push("dubte");
+    const ac = actual && A._acordsParaula[i].length ? `<span class="ac">${esc(A._acordsParaula[i].join(" "))}</span>` : "";
+    h += `<span class="${cls.join(" ")}" data-t="${w.start}" title="${fmt(w.start)}–${fmt(w.end)}${w.conf != null ? " conf " + w.conf.toFixed(2) : ""}">${ac}${esc(w.text)}</span> `;
+  }
+  return h;
+}
+function pintaLletra(t, iw, hiHaParaula) {
+  const il = ultimFins(A.lines, t, (l) => l.start);
+  const clau = `${il}|${iw}|${hiHaParaula}|${A.words[iw] && A.words[iw].start > t}`;
+  if (clau === estat.liniaPintada) return;
+  estat.liniaPintada = clau;
+  $("liniaAnt").innerHTML = htmlLinia(A.lines[il - 1], t, iw, false);
+  $("liniaAct").innerHTML = il >= 0 ? htmlLinia(A.lines[il], t, iw, true) : "<span class='petit'>(encara no comença la lletra)</span>";
+  $("liniaSeg").innerHTML = htmlLinia(A.lines[il + 1], t, iw, false);
+}
+$("lletra").addEventListener("click", (e) => { const m = e.target.closest(".mot"); if (m && jugador) jugador.salta(+m.dataset.t + desplacament - 0.3); });
+
+// ---------- línia de temps ----------
+const cv = $("tl"), g2 = cv.getContext("2d");
+let colors = {};
+function llegeixColors() { const cs = getComputedStyle(document.documentElement);
+  for (const k of ["text", "muted", "line", "accent", "beat", "word", "warn", "sec-a", "sec-b", "mark", "panel"]) colors[k] = cs.getPropertyValue("--" + k).trim(); }
+llegeixColors(); matchMedia("(prefers-color-scheme: dark)").addEventListener("change", llegeixColors);
+const CAP = 0.3;   // posició del capçal (fracció de l'amplada)
+const FRANGES = { sec: [4, 18], acord: [28, 36], puls: [72, 40], mot: [120, 40], notes: [168, 14] };
+function pintaTL(t) {
+  const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = 190;
+  if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; cv.style.height = H + "px"; }
+  g2.setTransform(dpr, 0, 0, dpr, 0, 0); g2.clearRect(0, 0, W, H);
+  const t0 = t - zoom * CAP, t1 = t0 + zoom, x = (tt) => (tt - t0) / zoom * W;
+  g2.font = "12px system-ui, sans-serif"; g2.textBaseline = "middle";
+  const caixa = (a, b, [y, h], fons, alfa) => { const xa = Math.max(x(a), -2), xb = Math.min(x(b), W + 2);
+    if (xb <= xa) return null; g2.globalAlpha = alfa; g2.fillStyle = fons; g2.fillRect(xa, y, xb - xa, h); g2.globalAlpha = 1; return [xa, xb]; };
+  const text = (s, xa, xb, y, color) => { g2.save(); g2.beginPath(); g2.rect(xa + 3, y - 10, xb - xa - 6, 20); g2.clip();
+    g2.fillStyle = color; g2.fillText(s, xa + 4, y); g2.restore(); };
+  // seccions
+  A.sections.forEach((s, i) => { const r = caixa(s.start, s.end, FRANGES.sec, colors[i % 2 ? "sec-b" : "sec-a"], 1);
+    if (r) text(s.name, r[0], r[1], FRANGES.sec[0] + 9, colors.muted); });
+  // pulsacions + línies de compàs
+  const [py, ph] = FRANGES.puls;
+  for (let i = Math.max(0, ultimFins(A.beats, t0, (b) => b.t)); i < A.beats.length && A.beats[i].t <= t1; i++) {
+    const b = A.beats[i], xb = x(b.t), u = b.beat === 1;
+    if (u) { g2.strokeStyle = colors.line; g2.lineWidth = 1; g2.beginPath(); g2.moveTo(xb, FRANGES.acord[0]); g2.lineTo(xb, 160); g2.stroke();
+      g2.fillStyle = colors.beat; g2.fillText(b.bar === 0 ? "0" : String(b.bar), xb + 3, py + 8); }
+    g2.strokeStyle = colors.beat; g2.lineWidth = u ? 2.5 : 1.2; g2.beginPath();
+    g2.moveTo(xb, u ? py : py + 18); g2.lineTo(xb, py + ph); g2.stroke();
+  }
+  // acords
+  for (let i = Math.max(0, ultimFins(A.chords, t0, (c) => c.start)); i < A.chords.length && A.chords[i].start <= t1; i++) {
+    const c = A.chords[i], r = caixa(c.start, c.end, FRANGES.acord, colors.accent, 0.12 + 0.5 * (c.conf || 0));
+    if (!r) continue;
+    g2.strokeStyle = colors.accent; g2.lineWidth = 1; g2.strokeRect(r[0] + 0.5, FRANGES.acord[0] + 0.5, r[1] - r[0] - 1, FRANGES.acord[1] - 1);
+    text(c.label, r[0], r[1], FRANGES.acord[0] + 18, colors.text);
+  }
+  // paraules
+  const [my, mh] = FRANGES.mot;
+  for (let i = Math.max(0, ultimFins(A.words, t0 - 5, (w) => w.start)); i < A.words.length && A.words[i].start <= t1; i++) {
+    const w = A.words[i], r = caixa(w.start, w.end, FRANGES.mot, colors.word, w.start <= t && t < w.end ? 0.45 : 0.18);
+    if (!r) continue;
+    g2.strokeStyle = colors.word; g2.lineWidth = 1; g2.strokeRect(r[0] + 0.5, my + 0.5, r[1] - r[0] - 1, mh - 1);
+    if (w.conf != null && w.conf < 0.5) { g2.fillStyle = colors.warn; g2.fillRect(r[0], my + mh - 3, r[1] - r[0], 3); }
+    text(w.text, r[0], r[1], my + mh / 2, colors.text);
+  }
+  // notes
+  for (const n of notes) if (n.t >= t0 && n.t <= t1) {
+    const xn = x(n.t), y = FRANGES.notes[0]; g2.fillStyle = colors.mark;
+    g2.beginPath(); g2.moveTo(xn, y); g2.lineTo(xn - 6, y + 12); g2.lineTo(xn + 6, y + 12); g2.fill(); }
+  // capçal
+  const xc = W * CAP; g2.strokeStyle = colors.mark; g2.lineWidth = 2; g2.beginPath(); g2.moveTo(xc, 0); g2.lineTo(xc, H); g2.stroke();
+}
+cv.addEventListener("click", (e) => { if (!jugador) return; const r = cv.getBoundingClientRect();
+  jugador.salta(tAnalisi() + ((e.clientX - r.left) / r.width - CAP) * zoom + desplacament); });
+cv.addEventListener("wheel", (e) => { e.preventDefault(); zoom = Math.min(60, Math.max(2, zoom * (e.deltaY > 0 ? 1.15 : 1 / 1.15))); }, { passive: false });
+
+// ---------- notes d'errors ----------
+const clauNotes = () => "visor-notes:" + (info.json || (A && A.meta && A.meta.title) || "");
+function carregaNotes() { try { notes = JSON.parse(localStorage.getItem(clauNotes()) || "[]"); } catch (e) { notes = []; } }
+function desaNotes() { try { localStorage.setItem(clauNotes(), JSON.stringify(notes)); } catch (e) { } }
+function context(t) {
+  const b = A.beats[ultimFins(A.beats, t, (b) => b.t)], c = A.chords[ultimFins(A.chords, t, (c) => c.start)];
+  const w = A.words[ultimFins(A.words, t, (w) => w.start)];
+  return [b ? `c.${b.bar}.${b.beat}` : "", c && t < c.end ? `[${c.label}]` : "", w && t < w.end ? `«${w.text}»` : ""].filter(Boolean).join(" ");
+}
+function afegeixNota() {
+  if (!A || !jugador) return;
+  const t = tAnalisi(); notes.push({ t, ctx: context(t), text: "" }); notes.sort((a, b) => a.t - b.t);
+  desaNotes(); pintaNotes();
+  const inp = [...$("llistaNotes").querySelectorAll("input")][notes.findIndex((n) => n.t === t)]; if (inp) inp.focus();
+}
+function pintaNotes() {
+  $("llistaNotes").innerHTML = notes.map((n, i) => `<li><a data-i="${i}">${fmt(n.t)}</a> ${esc(n.ctx)}
+    <input data-i="${i}" value="${esc(n.text)}" placeholder="què falla? (Enter per tornar)"> <button data-x="${i}">×</button></li>`).join("");
+}
+$("llistaNotes").addEventListener("click", (e) => {
+  if (e.target.dataset.x != null) { notes.splice(+e.target.dataset.x, 1); desaNotes(); pintaNotes(); }
+  else if (e.target.tagName === "A") jugador && jugador.salta(notes[+e.target.dataset.i].t + desplacament - 1);
+});
+$("llistaNotes").addEventListener("input", (e) => { if (e.target.dataset.i != null) { notes[+e.target.dataset.i].text = e.target.value; desaNotes(); } });
+$("llistaNotes").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
+$("bNota").onclick = afegeixNota;
+$("bBuida").onclick = () => { if (notes.length && confirm("Esborrar totes les notes?")) { notes = []; desaNotes(); pintaNotes(); } };
+$("bCopia").onclick = () => {
+  const cap = `${$("titol").textContent} (${info.json || ""})${desplacament ? ` · desplaçament ${desplacament * 1000} ms` : ""}`;
+  const txt = [cap, ...notes.map((n) => `${fmt(n.t)} ${n.ctx} — ${n.text}`)].join("\n");
+  navigator.clipboard.writeText(txt).then(() => { $("bCopia").textContent = "Copiat!"; setTimeout(() => $("bCopia").textContent = "Copia", 1200); });
+};
+
+// ---------- bucle ----------
+function bucle() {
+  if (A) {
+    const t = tAnalisi(), sonant = !!jugador && !jugador.aturat();
+    $("bPlay").textContent = sonant ? "❚❚ Pausa" : "▶ Reprodueix";
+    actualitza(t); pintaTL(t); programaSo(t, sonant);
+  }
+  requestAnimationFrame(bucle);
+}
+inicia(); requestAnimationFrame(bucle);
+</script>
+</body>
+</html>

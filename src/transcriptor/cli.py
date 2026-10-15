@@ -3,6 +3,7 @@
     tx run <url|fitxer> [--lyrics fitxer.txt] [--title T] [--artist A] [--lang ca] [--device auto]
     tx bench [--n 20] [--ids 110,111] [--config configs/x.yaml]
     tx worker --api https://guitarreo.cat --token ... [--device auto]
+    tx visor <analysis.json|directori> [--audio fitxer]
 """
 
 from __future__ import annotations
@@ -67,6 +68,12 @@ def _worker(args) -> int:
     return executa_worker(args)
 
 
+def _visor(args) -> int:
+    from .visor import serveix
+
+    return serveix(args.cami, audio=args.audio, port=args.port, obre=not args.no_obris)
+
+
 def main(argv: list[str] | None = None) -> int:
     if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
         sys.stdout.reconfigure(encoding="utf-8")
@@ -113,6 +120,13 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"])
     m.add_argument("--config")
     m.set_defaults(func=_models)
+
+    v = sub.add_parser("visor", help="Reprodueix la cançó i mostra la sincronització de l'anàlisi al navegador")
+    v.add_argument("cami", help="analysis.json o el directori que el conté")
+    v.add_argument("--audio", help="Fitxer d'àudio (per defecte, source.fitxer si existeix; si no, YouTube)")
+    v.add_argument("--port", type=int, default=8765, help="0 = qualsevol port lliure")
+    v.add_argument("--no-obris", action="store_true", help="No obre el navegador")
+    v.set_defaults(func=_visor)
 
     args = p.parse_args(argv)
     _configura_logs(args.verbos)

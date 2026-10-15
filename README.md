@@ -50,6 +50,15 @@ uv run --no-sync tx worker --api https://guitarreo.cat --token ...
 uv run --no-sync pythonw -m transcriptor.app
 ```
 
+Revisar a ull la sincronització d'una anàlisi (pulsació, compàs, acord i paraula en directe, línia de
+temps, clic de metrònom, acords sonors i notes d'errors copiables):
+
+```bash
+uv run --no-sync tx visor work/bench/resultats/final/1      # àudio local (source.fitxer)
+uv run --no-sync tx visor out/J-fFsUFAnUc                   # sense àudio al disc: vídeo de YouTube
+uv run --no-sync tx visor out/<id> --audio cançó.mp3        # àudio explícit (més precís que YouTube)
+```
+
 `--device auto|cpu|cuda`: per defecte detecta la GPU i, si CUDA falla, torna a CPU.
 
 Validar un `content` amb el codi real del canconer (round-trip `parse`/`serialize`, seccions, acords):
