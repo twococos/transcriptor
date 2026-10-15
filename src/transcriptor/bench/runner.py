@@ -144,6 +144,7 @@ def resum(files: list[dict]) -> str:
             "| Mètrica | Valor |", "|---|---|",
             f"| Acords majmin: recuperat de la BD | {_mitjana(grup, 'acords_recall')} |",
             f"| Acords majmin: correcte del predit | {_mitjana(grup, 'acords_precisio')} |",
+            f"| Acords sevenths: recuperat / correcte | {_mitjana(grup, 'septimes_recall')} / {_mitjana(grup, 'septimes_precisio')} |",
             f"| Col·locació (mateixa paraula) | {_mitjana(grup, 'collocacio')} |",
             f"| Estructura (tipus de secció per línia) | {_mitjana(grup, 'estructura')} |",
             f"| WER de l'ASR (orientatiu) | {np.mean([f['wer'] for f in grup if 'wer' in f]):.3f} |",

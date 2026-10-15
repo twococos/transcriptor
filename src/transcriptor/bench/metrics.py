@@ -49,8 +49,20 @@ def tipus_seccio(nom: str | None) -> str | None:
     return None
 
 
-def seq_acords(content: str) -> list[tuple[int, str]]:
-    seq = [majmin(a) for a in _RE_CH.findall(content)]
+def septimes(acord: str) -> tuple[int, str] | None:
+    """Acord → (arrel, qualitat) amb qualitat a maj | min | 7 | maj7 | m7 | dim (nivell sevenths)."""
+    r = arrel_i_sufix(acord)
+    if r is None:
+        return None
+    arrel, sufix = r
+    for q in ("maj7", "m7b5", "m7", "mmaj7", "7", "dim", "m"):
+        if sufix.startswith(q):
+            return arrel, {"m7b5": "dim", "mmaj7": "min", "m": "min"}.get(q, q)
+    return arrel, "maj"
+
+
+def seq_acords(content: str, nivell=None) -> list[tuple[int, str]]:
+    seq = [(nivell or majmin)(a) for a in _RE_CH.findall(content)]
     seq = [a for a in seq if a is not None]
     return [a for i, a in enumerate(seq) if i == 0 or a != seq[i - 1]]
 
@@ -80,14 +92,20 @@ def _nw_encerts(ref: list, pred: list) -> int:
 
 
 def acords(ref_content: str, pred_content: str) -> dict:
-    """Concordança de seqüències d'acords (majmin), provant els 12 transports."""
+    """Concordança de seqüències d'acords (majmin), provant els 12 transports; i a nivell sevenths
+    amb el mateix transport."""
     ref, pred = seq_acords(ref_content), seq_acords(pred_content)
     millor = (-1, 0)
     for despl in range(12):
         ref_t = [((r + despl) % 12, t) for r, t in ref]
         millor = max(millor, (_nw_encerts(ref_t, pred), despl))
     encerts, despl = millor
+    ref7 = [((r + despl) % 12, t) for r, t in seq_acords(ref_content, septimes)]
+    pred7 = seq_acords(pred_content, septimes)
+    encerts7 = _nw_encerts(ref7, pred7)
     return {
+        "septimes_recall": round(encerts7 / max(len(ref7), 1), 3),
+        "septimes_precisio": round(encerts7 / max(len(pred7), 1), 3),
         "n_ref": len(ref), "n_pred": len(pred),
         "acords_recall": round(encerts / max(len(ref), 1), 3),
         "acords_precisio": round(encerts / max(len(pred), 1), 3),

@@ -56,9 +56,11 @@ for valor in valors:
         res = executa(Entrada(font=str(audio), titol=c["title"], artista=c["artist"], content_bd=c["content"]),
                       cfg, perfil, cache)
         files.append(avalua(c, res.content, res.analisi))
-    m = {k: np.mean([f[k] for f in files]) for k in ("acords_recall", "acords_precisio", "collocacio", "estructura")}
+    m = {k: np.mean([f[k] for f in files]) for k in ("acords_recall", "acords_precisio", "septimes_recall", "septimes_precisio",
+                                    "collocacio", "estructura")}
     tons = sum(f["to"] == "exacte" for f in files)
     print(f"{constant}={valor}: acords {100 * m['acords_recall']:.1f} / {100 * m['acords_precisio']:.1f} · "
+          f"7a {100 * m['septimes_recall']:.1f} / {100 * m['septimes_precisio']:.1f} · "
           f"col·locació {100 * m['collocacio']:.1f} · estructura {100 * m['estructura']:.1f} · "
           f"to exacte {tons}/{len(files)}")
 setattr(modul, constant, original)

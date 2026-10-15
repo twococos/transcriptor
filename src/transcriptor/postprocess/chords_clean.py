@@ -17,7 +17,7 @@ from ..vendor.btc import idx_a_acord
 
 PENALITZACIO_CANVI = 2.0
 FACTOR_INICI_COMPAS = 0.35  # la penalització a l'inici de compàs es multiplica per això
-PES_SEPTIMES = 0.6  # prior: BTC sobreprediu sèptimes; el guitarrista les escriu menys
+PES_SEPTIMES = 0.3  # prior: BTC sobreprediu sèptimes; el guitarrista les escriu menys
 SENSE_ACORD = "N"
 
 
