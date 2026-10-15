@@ -24,6 +24,7 @@ CONTENCIO = 0.8
 BUIT_BLOC_S = 2.5
 MIN_LINIES_TRAM = 2
 FRACCIO_FINAL_PONT = 0.55
+FRACCIO_BIGRAMES_PONT = 0.6
 
 
 def _clau(text: str) -> str:
@@ -34,6 +35,12 @@ def _similars(a: str, b: str) -> bool:
     if not a or not b:
         return False
     return a == b or SequenceMatcher(None, a, b, autojunk=False).ratio() >= SIMILITUD_LINIA
+
+
+def _bigrames(elements: list[dict], idx: list[int]) -> set[tuple[str, str]]:
+    seq = [ac[1] for i in idx for ac in elements[i].get("acords", [])]
+    seq = [a for k, a in enumerate(seq) if k == 0 or a != seq[k - 1]]
+    return set(zip(seq, seq[1:]))
 
 
 def _conte(a: str, b: str) -> bool:
@@ -144,7 +151,11 @@ def detecta(elements: list[dict], durada: float, durada_compas: float) -> list[d
         if elements[idx[0]]["start"] < durada * FRACCIO_FINAL_PONT:
             continue
         altres = set().union(*(_acords(elements, t[0]) for j, t in enumerate(trams) if j != k))
-        if _acords(elements, idx) - altres:
+        bigrames_altres = set().union(*(_bigrames(elements, t[0]) for j, t in enumerate(trams) if j != k))
+        bigrames = _bigrames(elements, idx)
+        # Acords nous, o els mateixos acords en un altre ordre (Bon dia: C#m F#m D A vs A E F#m C#m)
+        nous = len(bigrames - bigrames_altres) / max(len(bigrames), 1)
+        if _acords(elements, idx) - altres or (len(bigrames) >= 3 and nous >= FRACCIO_BIGRAMES_PONT):
             tipus[k] = "Pont"
 
     # 4. Seccions finals, incloent-hi les zones instrumentals

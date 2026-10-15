@@ -17,6 +17,7 @@ LLINDAR_SIMILITUD = 0.6
 FORAT = -0.5
 BLOC_NO_CANTAT = 4
 MAX_PAS_INTERPOLACIO = 0.4  # segons per subparaula interpolada
+MAX_BUIT_LINIA_S = 6.0  # dins d'una línia, un buit més llarg indica paraules mal aparellades
 
 
 def _similitud(a: str, b: str) -> float:
@@ -163,6 +164,19 @@ def alinea(linies: list[list[str]], paraules_asr: list[dict], durada: float,
                 k = fi
             else:
                 k += 1
+
+    # Una línia no té buits llargs entre paraules: si n'hi ha, les paraules d'abans del buit estan
+    # mal aparellades (p. ex. "Al" de "Al bell mig…" aparellat amb un "al" anterior) i s'acosten
+    for a, b in linies_rang:
+        for k in range(b - 2, a - 1, -1):
+            seguent = sortida[k + 1]["start"]
+            if seguent - sortida[k]["end"] > MAX_BUIT_LINIA_S:
+                for x in range(k, a - 1, -1):
+                    durada_w = min(max(sortida[x]["end"] - sortida[x]["start"], 0.15), MAX_PAS_INTERPOLACIO)
+                    sortida[x]["end"] = round(seguent - 0.05, 2)
+                    sortida[x]["start"] = round(sortida[x]["end"] - durada_w, 2)
+                    seguent = sortida[x]["start"]
+                break
 
     paraules_finals, linies_finals, descartades = [], [], []
     for k, (a, b) in enumerate(linies_rang):
