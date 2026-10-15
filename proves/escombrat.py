@@ -59,8 +59,9 @@ for valor in valors:
     m = {k: np.mean([f[k] for f in files]) for k in ("acords_recall", "acords_precisio", "septimes_recall", "septimes_precisio",
                                     "collocacio", "estructura")}
     tons = sum(f["to"] == "exacte" for f in files)
+    tons_ac = sum(f["to_acords_bd"] == "exacte" for f in files)
     print(f"{constant}={valor}: acords {100 * m['acords_recall']:.1f} / {100 * m['acords_precisio']:.1f} · "
           f"7a {100 * m['septimes_recall']:.1f} / {100 * m['septimes_precisio']:.1f} · "
           f"col·locació {100 * m['collocacio']:.1f} · estructura {100 * m['estructura']:.1f} · "
-          f"to exacte {tons}/{len(files)}")
+          f"to exacte {tons}/{len(files)} (vs acords BD {tons_ac})")
 setattr(modul, constant, original)
