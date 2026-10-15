@@ -17,6 +17,11 @@ Avui les cançons entren al Cançoner via importadors que fan scraping de webs d
 - **Sense `allin1`**: depèn de `natten` (extensió C++/CUDA sense versió per a Windows, i fixada a una versió antiga) i de `madmom` (difícil d'instal·lar en Python recent). Ritme amb **Beat This!** (només PyTorch) i estructura amb una **detecció pròpia per repeticions**. Tampoc s'usa **Essentia**, que no té versió per a Windows: la tonalitat surt dels acords.
 - **CPU i GPU**: el codi detecta el dispositiu (`--device auto|cpu|cuda`) i tria precisió i models segons el que hi hagi.
 
+**Estat (2026-10-15)**: Fases 0-5 i 7 fetes al repo `transcriptor` (Fase 7 sense compilar
+l'instal·lador ni provar-lo en un Windows net). Fase 6 pendent de discutir: proposta de protocol a
+`docs/api_worker.md` i client ja implementat. Benchmark de 108 cançons: acords majmin 90 %,
+estructura 74 %, col·locació 46 %, to 98/108 (vegeu `docs/benchmark.md`).
+
 **Decisions de la Fase 0** (2026-10-15, detall a `docs/proves.md`):
 - Separació: `htdemucs` en CPU, Mel-RoFormer (audio-separator) en GPU. `htdemucs_ft` descartat (8× més lent, sense millora). La separació és imprescindible per a la lletra.
 - Acords: **BTC** (vocabulari gran), calculats sobre la mescla en paral·lel a la separació. Cal incorporar-ne el codi al repo i modernitzar-lo. Chordino i ChordFormer descartats.

@@ -30,6 +30,8 @@ from .text import detecta_idioma, linies_de_text
 
 log = logging.getLogger(__name__)
 
+MIN_APARELLADES = 0.4  # per sota, la lletra i l'àudio probablement no són la mateixa versió
+
 
 @dataclass
 class Entrada:
@@ -161,6 +163,9 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
                              lambda: dict(zip(("paraules", "afinades"),
                                               lyrics_ctc.afina(veu, paraules, rangs, perfil))))
             paraules = ctc["paraules"]
+        if al["aparellades"] < MIN_APARELLADES:
+            avisos.append(f"Només el {al['aparellades']:.0%} de la lletra coincideix amb el que es canta: "
+                          "potser el vídeo no és la mateixa versió (o la lletra és d'una altra cançó)")
         if al["descartades"]:
             avisos.append(f"{len(al['descartades'])} línies de la lletra no es canten i s'han descartat: "
                           + " / ".join(al["descartades"][:6]))
