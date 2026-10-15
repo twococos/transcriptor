@@ -38,8 +38,17 @@ a `%APPDATA%\Transcriptor`. El token es desa xifrat amb DPAPI (només el pot lle
 
 - **Signatura de codi** (imprescindible per a SAC): Azure Trusted Signing (~10 $/mes) o SignPath
   (gratuït per a projectes de codi obert). Alternativa sense signar: instal·lar només amb
-  `bootstrap.ps1` (PowerShell, uv i Python ja estan signats o tenen reputació, i aquí funcionen amb SAC
-  actiu). A més, SAC pot bloquejar DLL sense signar de tercers (ctranslate2) la primera vegada: vegeu
-  docs/proves.md.
+  `bootstrap.ps1`. A més, SAC pot bloquejar DLL sense signar de tercers (ctranslate2) la primera
+  vegada: vegeu docs/proves.md.
+
+## Smart App Control i Python
+
+El 2026-10-15 SAC va començar a bloquejar el `python.exe` de python-build-standalone (el que baixa
+uv), que la nit abans funcionava: SAC decideix per reputació al núvol i pot canviar d'opinió. Signar
+l'instal·lador no ho resoldria, perquè el bloqueig és del Python. Per això `bootstrap.ps1` baixa el
+**paquet NuGet oficial de python.org** (`python` 3.11.9, 17 MB, hash fixat): és un zip sense
+instal·lador, amb `python.exe`, `pythonw.exe` i les DLL signats per la Python Software Foundation, i
+el `.venv` que en fa uv copia aquests executables signats. Provat: bootstrap en directori net en 86 s
+i passada completa del pipeline (Demucs, Beat This!, BTC, Whisper) sense cap bloqueig.
 - Autoactualització quan l'API respongui 426: cal decidir d'on es baixa la versió nova (Fase 6).
 - Validació CUDA en una GPU llogada.

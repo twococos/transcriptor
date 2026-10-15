@@ -14,29 +14,40 @@ Requisit: tot s'instal·la a Windows i Linux amb `uv`, sense Docker i sense comp
 
 ## Instal·lació (desenvolupament)
 
+A Windows amb **Smart App Control** actiu, el Python que baixa uv (python-build-standalone) queda
+bloquejat perquè no està signat. Cal el Python oficial de python.org (signat), i que l'entorn el faci servir:
+
+```powershell
+winget install --id Python.Python.3.11 -e --scope user
+uv sync --extra cpu --extra app --python "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe"
+```
+
 ```bash
 uv sync --extra cpu            # o --extra cuda (PyTorch cu126)
 uv sync --extra cpu --extra app --extra ctc   # + app d'escriptori i afinament CTC
-uv run tx models               # baixa els models per endavant (~2 GB)
+uv run --no-sync tx models     # baixa els models per endavant (~2 GB)
 ```
+
+**Sempre `uv run --no-sync`** (o activar `.venv`): un `uv run` sense els `--extra` torna a
+sincronitzar l'entorn i en treu PyTorch CPU, l'app i el CTC.
 
 ## Ús
 
 ```bash
 # Una cançó (la lletra es busca a LRCLIB; si no hi és, es transcriu amb Whisper)
-uv run tx run "https://www.youtube.com/watch?v=J-fFsUFAnUc" --title "L'estaca" --artist "Lluís Llach"
+uv run --no-sync tx run "https://www.youtube.com/watch?v=J-fFsUFAnUc" --title "L'estaca" --artist "Lluís Llach"
 # Amb la lletra coneguda (té prioritat)
-uv run tx run cançó.mp3 --lyrics lletra.txt --title ... --artist ...
+uv run --no-sync tx run cançó.mp3 --lyrics lletra.txt --title ... --artist ...
 # → out/<id>/content.txt, analysis.json (SongAnalysis), proposta.json (ImportResult)
 
 # Benchmark contra la BD del canconer (dataset exportat a work/bench/)
-uv run tx bench --nom prova [--ids 110,111] [--nomes-postproces]
+uv run --no-sync tx bench --nom prova [--ids 110,111] [--nomes-postproces]
 
 # Worker (quan existeixi l'API de la Fase 6)
-uv run tx worker --api https://guitarreo.cat --token ...
+uv run --no-sync tx worker --api https://guitarreo.cat --token ...
 
 # App d'escriptori
-uv run pythonw -m transcriptor.app
+uv run --no-sync pythonw -m transcriptor.app
 ```
 
 `--device auto|cpu|cuda`: per defecte detecta la GPU i, si CUDA falla, torna a CPU.
@@ -52,7 +63,7 @@ node --experimental-strip-types tools/valida_content.mts out/<id>/content.txt
 ```
 fetch (yt-dlp + ffmpeg portable) → separate (htdemucs | Mel-RoFormer) → rhythm (Beat This!)
 → chords (BTC, probabilitats per trama) → lyrics_source (usuari > BD > LRCLIB) → ASR (Whisper turbo)
-→ postprocés: compàs (Viterbi, inclou 6/8) · acords per pulsació (Viterbi) · to (Krumhansl) · cejilla
+→ postprocés: compàs (Viterbi, inclou 6/8) · acords per pulsació (Viterbi) · to (funcional) · cejilla
 → temps per paraula (transferència ASR → text) → merge → estructura (repeticions) → render
 ```
 
@@ -61,5 +72,5 @@ Cada etapa cara es desa a `work/cache/<id>/`: canviar el postprocés i tornar a 
 ## Tests
 
 ```bash
-uv run pytest
+uv run --no-sync pytest
 ```
