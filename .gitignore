@@ -8,6 +8,7 @@ __pycache__/
 work/
 out/
 models/
+.claude/
 *.wav
 *.mp3
 *.m4a
