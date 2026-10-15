@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -41,14 +42,20 @@ def id_canco(entrada: str) -> str:
     return "f-" + h.hexdigest()[:12]
 
 
-def _args_js_runtime() -> list[str]:
-    # yt-dlp necessita un intèrpret de JS per als reptes de YouTube; per defecte busca deno
-    if shutil.which("deno"):
-        return []
-    if shutil.which("node"):
-        return ["--js-runtimes", "node"]
+def _entorn_js() -> tuple[list[str], dict]:
+    """Arguments i entorn perquè yt-dlp trobi un intèrpret de JS (reptes de YouTube).
+
+    El paquet `deno` de PyPI deixa deno.exe al directori d'scripts de l'entorn, que no sempre és al
+    PATH (p. ex. quan l'app s'executa amb pythonw): l'hi afegim.
+    """
+    scripts = str(Path(sys.executable).parent)
+    entorn = {**os.environ, "PATH": scripts + os.pathsep + os.environ.get("PATH", "")}
+    if shutil.which("deno", path=entorn["PATH"]):
+        return [], entorn
+    if shutil.which("node", path=entorn["PATH"]):
+        return ["--js-runtimes", "node"], entorn
     log.warning("No hi ha deno ni node: yt-dlp pot fallar amb alguns vídeos de YouTube")
-    return []
+    return [], entorn
 
 
 def descarrega(entrada: str, desti: Path) -> dict:
@@ -61,14 +68,15 @@ def descarrega(entrada: str, desti: Path) -> dict:
     yid = youtube_id(url)
     if yid:
         url = f"https://www.youtube.com/watch?v={yid}"  # treu llistes i altres paràmetres
+    args_js, entorn = _entorn_js()
     with tempfile.TemporaryDirectory(prefix="tx-") as tmp:
         sortida = subprocess.run(
-            [sys.executable, "-m", "yt_dlp", "--no-warnings", "--no-playlist", *_args_js_runtime(),
+            [sys.executable, "-m", "yt_dlp", "--no-warnings", "--no-playlist", *args_js,
              "-f", "bestaudio/best", "--ffmpeg-location", ffmpeg(),
              "-o", str(Path(tmp) / "audio.%(ext)s"),
              "--no-simulate", "--print", "%(id)s\t%(title)s\t%(channel)s\t%(duration)s",
              url],
-            check=True, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            check=True, capture_output=True, text=True, encoding="utf-8", errors="replace", env=entorn,
         )
         fitxers = list(Path(tmp).glob("audio.*"))
         if not fitxers:

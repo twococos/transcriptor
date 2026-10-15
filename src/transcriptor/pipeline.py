@@ -25,7 +25,7 @@ from .postprocess import chords_clean, key as key_mod, lines as lines_mod, meter
 from .schema import (Acord, Font, ImportResult, Linia, Meta, Paraula, Pulsacio, Seccio, SongAnalysis,
                      Tempo, Tonalitat)
 from .stages import chords, fetch, lyrics_align, lyrics_asr, lyrics_source, rhythm, separate
-from .text import linies_de_text
+from .text import detecta_idioma, linies_de_text
 
 log = logging.getLogger(__name__)
 
@@ -118,12 +118,14 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     )
 
     # 6. ASR (sempre: dona els temps també quan tenim el text)
+    # Idioma: explícit > deduït del text conegut > detecció de Whisper (de vegades falla: "Esperança"
+    # es va detectar com a anglès perquè l'inici és instrumental)
+    idioma_asr = entrada.idioma or (detecta_idioma(font_lletra["text"]) if font_lletra["text"] else None)
     asr = cache.json("lyrics_asr", {"model": cfg.whisper_model, "compute_type": compute_type,
-                                    "idioma": entrada.idioma, "veu": separador},
-                     lambda: lyrics_asr.transcriu(veu, perfil, cfg.whisper_model, compute_type,
-                                                  entrada.idioma))
+                                    "idioma": idioma_asr, "veu": separador, "deteccio": 6},
+                     lambda: lyrics_asr.transcriu(veu, perfil, cfg.whisper_model, compute_type, idioma_asr))
 
-    idioma = entrada.idioma or asr.get("idioma") or "ca"
+    idioma = idioma_asr or asr.get("idioma") or "ca"
 
     # 7. Postprocés de ritme i acords
     t0 = time.perf_counter()

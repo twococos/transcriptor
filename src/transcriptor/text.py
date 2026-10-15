@@ -37,3 +37,30 @@ def wer(referencia: list[str], hipotesi: list[str]) -> float:
             actual[j] = min(anterior[j] + 1, actual[j - 1] + 1, anterior[j - 1] + (r != h))
         anterior = actual
     return anterior[-1] / max(len(referencia), 1)
+
+
+# Paraules funcionals pròpies de cada idioma (exclusives entre si) per detectar l'idioma d'una lletra
+_PARAULES_IDIOMA = {
+    "ca": {"els", "amb", "és", "i", "dels", "em", "et", "ens", "jo", "som", "quan", "tot", "mai", "molt",
+           "perquè", "també", "aquest", "ara", "teu", "nit", "sóc", "vull", "avui", "res", "ningú", "allà",
+           "ets", "hi", "ho", "ja", "més", "pel", "sense", "mentre", "però", "fins", "seu", "aquí", "cap"},
+    "es": {"los", "y", "con", "por", "nos", "yo", "somos", "cuando", "todo", "nunca", "muy", "porque",
+           "también", "este", "ahora", "noche", "soy", "quiero", "hoy", "nada", "nadie", "allí", "eres",
+           "ya", "más", "pero", "sin", "mientras", "hasta", "estoy", "contigo", "corazón"},
+    "en": {"the", "and", "you", "to", "of", "is", "it", "my", "we", "your", "on", "be", "are", "love",
+           "all", "what", "so", "don't", "can", "will", "just", "i'm", "it's", "with", "this"},
+    "fr": {"le", "et", "je", "nous", "vous", "est", "pas", "avec", "pour", "dans", "une", "qui", "mon",
+           "ton", "c'est", "moi", "toi", "suis"},
+    "pt": {"não", "você", "eu", "uma", "do", "da", "em", "mas", "pra", "meu", "minha", "tudo", "sou"},
+}
+
+
+def detecta_idioma(text: str) -> str | None:
+    """Idioma d'una lletra per paraules funcionals ("ca", "es", "en", "fr", "pt"), o None si no és clar."""
+    paraules = re.findall(r"[\w'’·]+", unicodedata.normalize("NFC", text.lower()).replace("’", "'"))
+    if len(paraules) < 15:
+        return None
+    punts = {idioma: sum(p in conj for p in paraules) for idioma, conj in _PARAULES_IDIOMA.items()}
+    millor = max(punts, key=punts.get)
+    segon = sorted(punts.values())[-2]
+    return millor if punts[millor] >= 5 and punts[millor] >= 1.5 * segon else None

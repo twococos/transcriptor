@@ -18,4 +18,7 @@ models/
 *.pth
 *.ckpt
 *.onnx
-uv.lock.bak
+
+# Instal·lador
+installer/uv.exe
+installer/dist/

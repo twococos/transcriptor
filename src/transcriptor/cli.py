@@ -52,6 +52,15 @@ def _bench(args) -> int:
     return executa_bench(args)
 
 
+def _models(args) -> int:
+    from .config import Config
+    from .device import detecta
+    from .models import prepara
+
+    prepara(detecta(args.device), Config.carrega(args.config))
+    return 0
+
+
 def _worker(args) -> int:
     from .worker import executa_worker
 
@@ -99,6 +108,11 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--nom", default=None, help="Nom del worker (per defecte, el de l'ordinador)")
     w.add_argument("--una", action="store_true", help="Processa una sola feina i surt")
     w.set_defaults(func=_worker)
+
+    m = sub.add_parser("models", help="Descarrega tots els models per endavant")
+    m.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"])
+    m.add_argument("--config")
+    m.set_defaults(func=_models)
 
     args = p.parse_args(argv)
     _configura_logs(args.verbos)

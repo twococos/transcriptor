@@ -21,6 +21,7 @@ import numpy as np
 
 COMPASSOS_MIN_INSTRUMENTAL = 1.5  # un buit sense veu més llarg que això és instrumental
 MARGE_REPETICIO_INICI = 2  # lletres: un canvi d'acord tan a prop de l'inici es mou a la posició 0
+PENALITZACIO_POSTERIOR = 1.5  # cost relatiu de posar l'acord en una paraula que comença després del canvi
 
 
 def _durada_compas(beats: list[dict]) -> float:
@@ -32,23 +33,30 @@ def _durada_compas(beats: list[dict]) -> float:
 
 
 def _posicio(paraules: list[dict], rang: tuple[int, int], t: float, tol: float) -> int:
-    """Posició de caràcter dins el text de la línia (paraules unides amb un espai)."""
+    """Posició de caràcter dins el text de la línia (paraules unides amb un espai).
+
+    Tria la paraula amb l'inici més proper al canvi d'acord. Les paraules que comencen després del
+    canvi es penalitzen (PENALITZACIO_POSTERIOR): a la BD, l'acord sol anar a la paraula que ja ha
+    començat quan l'acord canvia (benchmark: Δ mediana +0,12 s, amb cua fins a +0,75 s).
+    """
     inici, fi = rang
-    offset = 0
+    ultima = paraules[fi - 1]
+    if t >= ultima["end"] + tol:
+        return sum(len(paraules[k]["text"]) + 1 for k in range(inici, fi))  # després de la lletra
+    offsets, offset = [], 0
     for k in range(inici, fi):
-        w = paraules[k]
-        seguent = paraules[k + 1]["start"] if k + 1 < fi else float("inf")
-        if t < w["start"] - tol and k == inici:
-            return 0
-        if t < seguent - tol:
-            if t >= w["end"]:
-                # Pausa després de la paraula: a l'inici de la següent (o al final de la línia)
-                return offset + len(w["text"]) + 1
-            durada = max(w["end"] - w["start"], 1e-3)
-            frac = min(max((t - w["start"]) / durada, 0.0), 0.999)
-            return offset + int(frac * len(w["text"]))
-        offset += len(w["text"]) + 1
-    return offset  # final de línia
+        offsets.append(offset)
+        offset += len(paraules[k]["text"]) + 1
+
+    def cost(k: int) -> float:
+        d = t - paraules[k]["start"]
+        return d if d >= 0 else -d * PENALITZACIO_POSTERIOR
+
+    k = min(range(inici, fi), key=cost)
+    w = paraules[k]
+    durada = max(w["end"] - w["start"], 1e-3)
+    frac = min(max((t - w["start"]) / durada, 0.0), 0.999)
+    return offsets[k - inici] + int(frac * len(w["text"]))
 
 
 def colloca(paraules: list[dict], rangs: list[list[int]], acords: list[dict], beats: list[dict],

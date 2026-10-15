@@ -99,13 +99,16 @@ class Client:
 
 class Worker:
     def __init__(self, client: Client, cfg: Config, perfil: Perfil,
-                 en_canvi: Callable[[EstatWorker], None] | None = None):
+                 en_canvi: Callable[[EstatWorker], None] | None = None,
+                 pot_treballar: Callable[[], str | None] | None = None):
+        """`pot_treballar()` retorna None si es pot agafar feina, o el motiu per esperar."""
         self.client = client
         self.cfg = cfg
         self.perfil = perfil
         self.estat = EstatWorker()
         self.atura = threading.Event()
         self.en_canvi = en_canvi or (lambda _e: None)
+        self.pot_treballar = pot_treballar or (lambda: None)
 
     def _avisa(self, missatge: str) -> None:
         self.estat.missatge = missatge
@@ -171,6 +174,11 @@ class Worker:
         espera = ESPERA_MIN_S
         try:
             while not self.atura.is_set():
+                motiu = self.pot_treballar()
+                if motiu:
+                    self._avisa(f"En pausa: {motiu}")
+                    self.atura.wait(ESPERA_MIN_S)
+                    continue
                 try:
                     feina = self.client.claim()
                 except (VersioMassaAntiga, PermissionError):

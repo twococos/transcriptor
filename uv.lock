@@ -420,6 +420,16 @@ wheels = [
 ]
 
 [[package]]
+name = "deno"
+version = "2.9.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/f1/0d7ca153f2363559d4462faed0d742632eedb74c9f7b8c05ee0d0bacdaaf/deno-2.9.7.tar.gz", hash = "sha256:79f4b7acdd9a37e98a4d1e0ca08d71c4e55f6c0cb13bd1e0946fa9b5497be2d9", size = 8168, upload-time = "2026-09-17T09:08:45.061Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/97/83/7168eaf88abd94777a62cf8fed9a849a2bd1adf9118d3b470b0b4ff5f08d/deno-2.9.7-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:836f2ab5918723b47b638a05bc4fdac99fc35e69b49a6771c24e32b19dff5d8a", size = 41608137, upload-time = "2026-09-17T09:08:37.461Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/90/87d4b92f3076832aae7aa06b0a4be95ceb29867d45e6f8e8ca7cde6abc16/deno-2.9.7-py3-none-win_amd64.whl", hash = "sha256:80b90a0aad3f167ffbfefe55830b7b14e9d49865eed741c013bb48f1c5996681", size = 41552994, upload-time = "2026-09-17T09:08:42.592Z" },
+]
+
+[[package]]
 name = "diffq"
 version = "0.2.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1749,6 +1759,7 @@ source = { editable = "." }
 dependencies = [
     { name = "beat-this" },
     { name = "demucs" },
+    { name = "deno" },
     { name = "faster-whisper" },
     { name = "imageio-ffmpeg" },
     { name = "librosa" },
@@ -1792,6 +1803,7 @@ requires-dist = [
     { name = "audio-separator", marker = "extra == 'roformer'", specifier = ">=0.47" },
     { name = "beat-this", specifier = ">=1.1" },
     { name = "demucs", specifier = ">=4.1" },
+    { name = "deno", specifier = ">=2.0" },
     { name = "faster-whisper", specifier = ">=1.2" },
     { name = "imageio-ffmpeg", specifier = ">=0.6" },
     { name = "librosa", specifier = ">=0.11" },

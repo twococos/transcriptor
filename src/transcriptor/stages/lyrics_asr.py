@@ -40,6 +40,8 @@ def transcriu(veu: Path, perfil: Perfil, model: str, compute_type: str, idioma: 
         segments, info = wm.transcribe(
             senyal, language=idioma, word_timestamps=True, vad_filter=True, beam_size=5,
             condition_on_previous_text=False, initial_prompt=prompt,
+            # Detecció sobre diversos trossos: els primers 30 s sovint són instrumentals
+            language_detection_segments=6,
         )
         segments = list(segments)
     finally:
