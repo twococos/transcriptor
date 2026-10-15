@@ -9,6 +9,7 @@ import base64
 import ctypes
 import logging
 import sys
+import threading
 from ctypes import wintypes
 
 log = logging.getLogger(__name__)
@@ -16,6 +17,50 @@ log = logging.getLogger(__name__)
 ES_WINDOWS = sys.platform == "win32"
 CLAU_ARRENCADA = r"Software\Microsoft\Windows\CurrentVersion\Run"
 NOM_ARRENCADA = "Transcriptor"
+NOM_MUTEX = r"Local\Transcriptor-app"
+NOM_EVENT_MOSTRA = r"Local\Transcriptor-mostra"
+_handles: list = []  # el mutex i l'event han de viure tant com el procés
+
+
+def _kernel32():
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+    k.CreateMutexW.restype = wintypes.HANDLE
+    k.CreateEventW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR]
+    k.CreateEventW.restype = wintypes.HANDLE
+    k.OpenEventW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
+    k.OpenEventW.restype = wintypes.HANDLE
+    k.SetEvent.argtypes = [wintypes.HANDLE]
+    k.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    k.WaitForSingleObject.restype = wintypes.DWORD
+    k.CloseHandle.argtypes = [wintypes.HANDLE]
+    return k
+
+
+def instancia_unica(en_mostra) -> bool:
+    """True si som l'única instància de l'app (per a aquest usuari). Si ja n'hi ha una, li demana que
+    mostri la finestra i retorna False. A la primera, `en_mostra()` es crida (des d'un altre fil) cada
+    cop que una instància nova ho demana."""
+    if not ES_WINDOWS:
+        return True
+    k = _kernel32()
+    mutex = k.CreateMutexW(None, False, NOM_MUTEX)
+    if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
+        event = k.OpenEventW(0x0002, False, NOM_EVENT_MOSTRA)  # EVENT_MODIFY_STATE
+        if event:
+            k.SetEvent(event)
+            k.CloseHandle(event)
+        k.CloseHandle(mutex)
+        return False
+    event = k.CreateEventW(None, False, False, NOM_EVENT_MOSTRA)  # reinici automàtic
+    _handles.extend([mutex, event])
+
+    def espera() -> None:
+        while k.WaitForSingleObject(event, 0xFFFFFFFF) == 0:  # INFINITE → WAIT_OBJECT_0
+            en_mostra()
+
+    threading.Thread(target=espera, daemon=True, name="instancia-unica").start()
+    return True
 
 
 def segons_inactiu() -> float:

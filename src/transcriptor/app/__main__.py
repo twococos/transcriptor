@@ -291,7 +291,8 @@ class App:
         ttk.Label(f, text="Benvingut/da!", style="Estat.TLabel").pack(anchor="w")
         ttk.Label(f, wraplength=480, justify="left", text=(
             "El Transcriptor fa servir aquest ordinador per treure la lletra, els acords i el ritme de "
-            "cançons per a El Cançoner. Per començar, enganxa el token que t'han donat i desa.")
+            "cançons per a El Cançoner. Per començar, enganxa el token que t'han donat i desa. Després, prem Activa: el primer "
+            "cop baixarà els models (~1,8 GB).")
         ).pack(anchor="w", pady=(4, 14))
         self._formulari(f, benvinguda=True)
 
@@ -373,7 +374,7 @@ class App:
 
         b = ttk.Frame(f)
         b.pack(fill="x", pady=(18, 0))
-        ttk.Button(b, text="Desa i comença" if benvinguda else "Desa", style="Accent.TButton",
+        ttk.Button(b, text="Desa", style="Accent.TButton",
                    command=self.desa).pack(side="left", ipadx=12)
         if not benvinguda:
             ttk.Button(b, text="Obre el registre", command=self.obre_registre).pack(side="left", padx=8)
@@ -498,6 +499,8 @@ class App:
                     self.estat = dades
                 elif tipus == "fetes":
                     self._recarrega_fetes()
+                elif tipus == "mostra":
+                    self._mostra_ara()
                 elif tipus == "acabat":
                     self.aturant = False
                 elif tipus == "error":
@@ -528,8 +531,7 @@ class App:
         self.prefs.actiu = self.var_auto.get()
         self.prefs.desa_audio = self.var_audio.get()
         self.prefs.arrencar_amb_windows = self.var_arrencada.get()
-        ordre = f'"{sys.executable.replace("python.exe", "pythonw.exe")}" -m transcriptor.app'
-        windows.configura_arrencada(self.prefs.arrencar_amb_windows, ordre)
+        windows.configura_arrencada(self.prefs.arrencar_amb_windows, ordre_arrencada())
         self.prefs.desa()
 
         if primer_cop:
@@ -645,7 +647,18 @@ class App:
             self.activa()
 
     def mostra(self) -> None:
-        self.arrel.after(0, lambda: (self.arrel.deiconify(), self.arrel.lift(), self.arrel.focus_force()))
+        """Es pot cridar des de qualsevol fil (icona, una altra instància): ho fa el fil de tkinter."""
+        self.cues.put(("mostra", None))
+
+    def _mostra_ara(self) -> None:
+        self.arrel.deiconify()
+        if self.arrel.state() == "iconic":
+            self.arrel.state("normal")
+        # Windows no deixa passar al davant una finestra d'un procés en segon pla: "topmost" un moment
+        self.arrel.attributes("-topmost", True)
+        self.arrel.lift()
+        self.arrel.focus_force()
+        self.arrel.after(300, lambda: self.arrel.attributes("-topmost", False))
 
     def amaga(self) -> None:
         self.arrel.withdraw()
@@ -658,7 +671,8 @@ class App:
             self.icona.stop()
         self.arrel.after(0, self.arrel.destroy)
 
-    def executa(self) -> None:
+    def executa(self, amagat: bool = False) -> None:
+        """`amagat`: només a la icona (arrencada amb Windows). Si no, sempre es veu la finestra."""
         import pystray
 
         menu = pystray.Menu(
@@ -669,11 +683,19 @@ class App:
         )
         self.icona = pystray.Icon("transcriptor", _icona(False), "Transcriptor", menu)
         self.icona.run_detached()
-        if self.prefs.actiu and self.prefs.token_protegit:
+        if amagat:
             self.arrel.withdraw()
+        if self.prefs.actiu and self.prefs.token_protegit:
             self.activa()
+        if windows.arrencada_activa():  # una arrencada desada per una versió anterior (sense --amagat)
+            windows.configura_arrencada(True, ordre_arrencada())
         self._refresca()
         self.arrel.mainloop()
+
+
+def ordre_arrencada() -> str:
+    """L'ordre de l'arrencada amb Windows: comença amagada, només amb la icona."""
+    return f'"{sys.executable.replace("python.exe", "pythonw.exe")}" -m transcriptor.app --amagat'
 
 
 def windows_nom() -> str:
@@ -688,8 +710,23 @@ def main() -> None:
     base = os.environ.get("LOCALAPPDATA") or str(dir_app())
     os.environ.setdefault("TX_HOME", os.path.join(base, "Transcriptor", "dades"))
     _configura_logs()
+    app: App | None = None
+    pendent = threading.Event()  # una altra instància ha demanat la finestra abans que l'app existís
+
+    def en_mostra() -> None:
+        if app:
+            app.mostra()
+        else:
+            pendent.set()
+
+    if not windows.instancia_unica(en_mostra):
+        log.info("Ja hi ha un Transcriptor obert: se li ha demanat que mostri la finestra")
+        return
     windows.prioritat_baixa()
-    App().executa()
+    app = App()
+    if pendent.is_set():
+        app.mostra()
+    app.executa(amagat="--amagat" in sys.argv)
 
 
 if __name__ == "__main__":
