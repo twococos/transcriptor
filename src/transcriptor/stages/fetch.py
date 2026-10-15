@@ -58,6 +58,18 @@ def _entorn_js() -> tuple[list[str], dict]:
     return [], entorn
 
 
+# Missatges de yt-dlp que indiquen que el vídeo no es podrà baixar mai (no val la pena reintentar)
+ERRORS_PERMANENTS = ("video unavailable", "private video", "has been removed", "copyright",
+                     "not available in your country", "confirm your age", "members-only",
+                     "is not a valid url", "unsupported url")
+
+
+class ErrorDescarrega(RuntimeError):
+    def __init__(self, missatge: str, permanent: bool):
+        super().__init__(missatge)
+        self.permanent = permanent
+
+
 def descarrega(entrada: str, desti: Path) -> dict:
     """Escriu `desti` (WAV) i retorna metadades {title, artist, duration_s, youtube_id, url|fitxer}."""
     if not es_url(entrada):
@@ -76,8 +88,11 @@ def descarrega(entrada: str, desti: Path) -> dict:
              "-o", str(Path(tmp) / "audio.%(ext)s"),
              "--no-simulate", "--print", "%(id)s\t%(title)s\t%(channel)s\t%(duration)s",
              url],
-            check=True, capture_output=True, text=True, encoding="utf-8", errors="replace", env=entorn,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=entorn,
         )
+        if sortida.returncode != 0:
+            error = sortida.stderr.strip()[-500:] or f"yt-dlp ha sortit amb el codi {sortida.returncode}"
+            raise ErrorDescarrega(error, permanent=any(e in error.lower() for e in ERRORS_PERMANENTS))
         fitxers = list(Path(tmp).glob("audio.*"))
         if not fitxers:
             raise RuntimeError(f"yt-dlp no ha generat cap fitxer: {sortida.stderr[-500:]}")

@@ -92,6 +92,7 @@ def test_processa_una_feina_i_envia_el_resultat(worker_fals):
         w.bucle(una=True)
         assert 7 in s.resultats
         assert s.resultats[7]["proposal"]["key"] == "Am"
+        assert s.resultats[7]["analysis"]["v"] == 2
         assert w.estat.fetes == 1
     finally:
         s.tanca()
@@ -108,6 +109,20 @@ def test_error_del_pipeline_es_reporta_com_a_fallada(worker_fals):
         w.bucle(una=True)
         assert "vídeo no disponible" in s.fallades[7]["error"]
         assert s.fallades[7]["released"] is False
+        assert s.fallades[7]["kind"] == "temporary"
+    finally:
+        s.tanca()
+
+
+def test_video_no_disponible_es_fallada_permanent(worker_fals):
+    s = Servidor([FEINA])
+
+    def peta(*_a, **_k):
+        raise worker_mod.ErrorDescarrega("ERROR: [youtube] abc: Video unavailable", permanent=True)
+
+    try:
+        worker_fals(s, pipeline=peta).bucle(una=True)
+        assert s.fallades[7]["kind"] == "permanent"
     finally:
         s.tanca()
 

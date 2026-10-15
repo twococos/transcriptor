@@ -24,7 +24,8 @@ from .cache import Cache
 from .config import Config
 from .device import Perfil, detecta
 from .pipeline import Entrada, executa
-from .stages.fetch import id_canco
+from .schema import a_compacte
+from .stages.fetch import ErrorDescarrega, id_canco
 
 log = logging.getLogger(__name__)
 
@@ -90,9 +91,10 @@ class Client:
     def resultat(self, id_feina: int, proposta: dict, analisi: dict) -> None:
         self._post(f"/jobs/{id_feina}/result", {"proposal": proposta, "analysis": analisi}).raise_for_status()
 
-    def falla(self, id_feina: int, error: str, alliberada: bool = False) -> None:
+    def falla(self, id_feina: int, error: str, alliberada: bool = False, permanent: bool = False) -> None:
         try:
-            self._post(f"/jobs/{id_feina}/fail", {"error": error[:2000], "released": alliberada})
+            self._post(f"/jobs/{id_feina}/fail", {"error": error[:2000], "released": alliberada,
+                                                  "kind": "permanent" if permanent else "temporary"})
         except requests.RequestException as e:
             log.warning("No s'ha pogut notificar la fallada: %s", e)
 
@@ -144,7 +146,7 @@ class Worker:
                 raise FeinaPerduda(id_feina)
             if self.atura.is_set():
                 raise InterruptedError
-            self.client.resultat(id_feina, res.proposta.model_dump(), res.analisi.model_dump())
+            self.client.resultat(id_feina, res.proposta.model_dump(), a_compacte(res.analisi))
             durada = time.perf_counter() - inici
             self.estat.fetes += 1
             self.estat.temps_mitja_s += (durada - self.estat.temps_mitja_s) / self.estat.fetes
@@ -161,7 +163,8 @@ class Worker:
             self.estat.fallades += 1
             self.estat.ultim_error = str(e)[:300]
             self.estat.historial.append({"titol": self.estat.feina_actual, "error": str(e)[:300], "ok": False})
-            self.client.falla(id_feina, f"{type(e).__name__}: {e}")
+            self.client.falla(id_feina, f"{type(e).__name__}: {e}",
+                              permanent=isinstance(e, ErrorDescarrega) and e.permanent)
         finally:
             fi.set()
             cache.esborra_audio()  # no s'emmagatzema àudio de YouTube

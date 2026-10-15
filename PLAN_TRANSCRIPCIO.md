@@ -1,7 +1,7 @@
 # Pla — Transcriptor: de l'àudio a lletra + acords sincronitzats
 
 > Viu a `.claude/PLAN_TRANSCRIPCIO.md` (repo del canconer) i se'n posa una còpia a l'arrel del repo nou `transcriptor`.
-> Última revisió: 2026-10-15 (decisions de la Fase 0).
+> Última revisió: 2026-10-15 (decisions i implementació de la Fase 6).
 
 ## Context
 
@@ -12,15 +12,40 @@ Avui les cançons entren al Cançoner via importadors que fan scraping de webs d
 - **Lletra híbrida**: si hi ha text (enganxat, LRCLIB, o la BD si la cançó ja hi és) → alineació forçada; si no → transcripció amb Whisper.
 - **Repo separat** (`C:\Users\Coco\VSC\transcriptor`), Python. S'integra al canconer al final.
 - **Cua obligatòria**: ha de poder processar centenars de cançons desateses.
-- **Pull-worker**: el worker demana feines a l'API del canconer amb connexions de sortida. Així funciona igual al PC, al servidor, a l'ordinador d'un amic o a una GPU al núvol, i el servidor continua sense acceptar connexions entrants. On corre per defecte: **decisió pendent**.
+- **Pull-worker**: el worker demana feines a l'API del canconer amb connexions de sortida. Així funciona igual al PC, al servidor, a l'ordinador d'un amic o a una GPU al núvol, i el servidor continua sense acceptar connexions entrants. De moment **només en PCs** (no al servidor).
 - **Funciona a Windows sense Docker**: a la llarga el worker serà una **aplicació de Windows instal·lable** (icona a la barra de tasques, activar/desactivar) perquè amics amb GPU hi puguin col·laborar. Per tant, **totes les dependències han de funcionar directament a Windows i a Linux**. Docker queda només per al servidor.
 - **Sense `allin1`**: depèn de `natten` (extensió C++/CUDA sense versió per a Windows, i fixada a una versió antiga) i de `madmom` (difícil d'instal·lar en Python recent). Ritme amb **Beat This!** (només PyTorch) i estructura amb una **detecció pròpia per repeticions**. Tampoc s'usa **Essentia**, que no té versió per a Windows: la tonalitat surt dels acords.
 - **CPU i GPU**: el codi detecta el dispositiu (`--device auto|cpu|cuda`) i tria precisió i models segons el que hi hagi.
 
-**Estat (2026-10-15)**: Fases 0-5 i 7 fetes al repo `transcriptor` (Fase 7 sense compilar
-l'instal·lador ni provar-lo en un Windows net). Fase 6 pendent de discutir: proposta de protocol a
-`docs/api_worker.md` i client ja implementat. Benchmark de 108 cançons: acords majmin 90 %,
-estructura 74 %, col·locació 46 %, to 98/108 (vegeu `docs/benchmark.md`).
+**Estat (2026-10-15)**: Fases 0-7 fetes (Fase 7 sense provar l'instal·lador en un Windows net). La
+Fase 6 és a la branca `transcripcio` del canconer, provada d'extrem a extrem contra `next dev` amb una
+còpia de la BD, però encara sense fusionar ni desplegar. Protocol a `docs/api_worker.md`. Benchmark de
+108 cançons: acords majmin 90 %, estructura 74 %, col·locació 46 %, to 98/108 (vegeu
+`docs/benchmark.md`).
+
+**Decisions de la Fase 6** (2026-10-15):
+- **L'anàlisi és immutable**: és la sortida de la màquina (què passa a l'àudio) i no s'edita mai. Es
+  guarda a `song_analyses`, **una fila per cançó** (reprocessar la sobreescriu), en una taula a part de
+  `songs` perquè no pesi a les consultes de cançons (pàgina pública, PDF…) i perquè té metadades i un
+  cicle de vida propis.
+- **Sincronització derivada, no desada**: la relació "aquest `<ch>`/aquesta línia del `content` cau a tal
+  temps" es calcula al moment alineant les paraules del `content` amb les de l'anàlisi (com la
+  transferència ASR → text conegut). Cada acord pren el temps de la paraula on és escrit, així que
+  afegir, treure, moure o corregir acords no trenca res. Els acords de línies sense lletra s'alineen per
+  ordre dins la seva franja de temps. La funció dona una qualitat; per sota d'un llindar, aquella versió
+  del `content` no té funcions de reproducció. No hi ha cap taula de cache: s'afegirà només si cal per
+  rendiment. No s'afegeixen temps dins el `content` (el format `<ch>`/`<sec>` no canvia).
+- **Format compacte (v2)** per a l'API i la BD: tuples i temps en ms enters, pulsacions com a diferències
+  + índexs d'inici de compàs. Sense gzip (text JSON consultable). Conserva tota la informació (temps al
+  ms, confiances a 0,001): 34 KB → 12 KB de mitjana.
+- **`songs.bpm` i `songs.time_signature`**: metadades visibles i editables. El transcriptor les omple en
+  crear la proposta; en mode `analyze`, només si són buides.
+- **Dos modes de feina**: `new` (crea proposta) i `analyze` (enganxa l'anàlisi a una cançó existent sense
+  tocar-ne el `content` ni crear proposta). `analyze` és el que dona temps a les cançons ja revisades.
+- Si el `youtubeUrl` d'una cançó canvia, l'anàlisi deixa de ser vigent (és d'un altre àudio).
+- Reintents: 3 intents; errors temporals ajornats 1 h / 2 h / 4 h; errors permanents de YouTube (vídeo no
+  disponible, privat…) no es reintenten. Versió mínima del worker: variable d'entorn
+  `TRANSCRIBER_MIN_VERSION`. Només URL de YouTube (pujar àudio, més endavant).
 
 **Decisions de la Fase 0** (2026-10-15, detall a `docs/proves.md`):
 - Separació: `htdemucs` en CPU, Mel-RoFormer (audio-separator) en GPU. `htdemucs_ft` descartat (8× més lent, sense millora). La separació és imprescindible per a la lletra.
@@ -83,6 +108,7 @@ canconer: taula transcription_jobs ─┘  → resultat → proposta (com els im
 ```
 - `content` (format `<ch>`/`<sec>`) és una **vista derivada** del JSON, no la font de veritat.
 - Sortida cap al canconer amb la mateixa forma que `ImportResult` (`src/lib/importers/types.ts` del canconer): `{ title, artist, key, capo, language, tags, content }`, i a més l'`analysis`.
+- Aquest és el format de treball del Python. Cap al canconer viatja i s'hi desa el **format compacte v2** (`a_compacte()` / `de_compacte()` a `schema.py`, detall a `docs/api_worker.md`).
 
 ### Estructura del repo nou
 ```
@@ -178,18 +204,23 @@ transcriptor/
 - Ajustar paràmetres segons el benchmark. Casos difícils: cançons amb capo, sense bateria, en directe, producció densa.
 - Opcional: postprocés amb LLM (Claude) quan la lletra ve d'ASR: corregir errors evidents de transcripció i proposar noms de secció, **sense tocar temps ni acords**.
 
-### Fase 6 — Cua i integració al canconer (quan el transcriptor sigui bo)
-**Al canconer** (convencions de `PROJECT_CONTEXT.md` §10-§13):
-- Taula `transcription_jobs` (BD principal, migració drizzle): `id, source_url, title, artist, lyrics_text?, song_id? (per reprocessar una existent), status (queued|running|done|failed), worker_id, lease_until, attempts, error, result_proposal_id, created_by, created_at, started_at, finished_at`.
-- Taula `song_analyses`: `song_id, version, analysis_json, models, created_at`. És la base per als acompanyaments.
-- Taula `transcription_workers`: `id, name, token_hash, active, device_info (cpu/gpu, model, VRAM), app_version, last_seen_at, jobs_done, avg_seconds`. Un token per worker, generat i revocable des de l'admin (només se'n desa el hash). Va a part de NextAuth, que només fa Google.
+### Fase 6 — Cua i integració al canconer ✅ (branca `transcripcio` del canconer)
+Decisions a l'inici del document. Protocol complet a `docs/api_worker.md`.
+
+**Al canconer** (convencions de `PROJECT_CONTEXT.md` §10-§13), migració `data/migrations/0001_transcripcio.sql` (només afegeix):
+- `songs`: columnes noves `bpm` i `time_signature` (`"4/4"`), exposades a l'API de cançons i editables per `PUT`.
+- `transcription_jobs`: `mode (new|analyze), source_url, title, artist, language, lyrics_text, song_id, status (queued|running|done|failed|cancelled), priority, worker_id, lease_until, attempts, not_before, error, result_song_id, elapsed_seconds, created_by, created_at, started_at, finished_at`.
+- `transcription_workers`: `name, token_hash (SHA-256), active, device_info, app_version, last_seen_at, jobs_done, avg_seconds`. A part de NextAuth.
+- `song_analyses`: `song_id (PK), job_id, youtube_id, duration_s, format_version, app_version, device, lyrics_source, analysis (JSON compacte v2), created_at`.
+- Codi: `src/db/queries/transcriptions.ts` (cua, lease, resultat, admin), `src/lib/transcriber/` (token, usuari "Transcriptor", utilitats de ruta), `src/lib/schemas/transcriber.ts` (Zod, inclòs el format compacte).
 - Endpoints:
-  - Admin: `POST /api/admin/transcriptions` (encuar una o moltes; reutilitzar el parse CSV de `/app/admin/import`), `GET` (estat de la cua), gestió de workers i tokens.
-  - Worker (token): `POST /api/transcriber/claim` (agafa la següent feina de forma atòmica dins una transacció better-sqlite3, amb lease; una feina penjada torna a la cua), `POST /api/transcriber/jobs/[id]/heartbeat`, `/result`, `/fail`. El `claim` envia capacitats i versió; l'API pot exigir una versió mínima.
-  - El resultat crea una **proposta** amb un usuari sistema "Transcriptor" (anàleg a `src/lib/bulkImport/importerUser.ts`) i desa l'anàlisi. Comprovació de duplicats com al bulk import. Es pot reprocessar en GPU una cançó feta abans en CPU.
-- UI admin: secció "Transcripcions" (cua, estat, workers); entrada des de `NewSongStartPopup` ("Des d'àudio"). Text via `getT()` (`src/lib/i18n/ca/admin.ts`).
-- **Worker CLI** (`tx worker --api https://guitarreo.cat --token ... [--device auto]`): bucle claim → pipeline → result, amb heartbeat, esborrat de l'àudio en acabar (no s'emmagatzema àudio de YouTube) i aturada neta (allibera la feina).
-- Al servidor: contenidor `docker/Dockerfile.cpu` al compose, amb `cpus`/`mem_limit` i prioritat baixa perquè no afecti la web.
+  - Worker (token): `POST /api/transcriber/claim`, `/jobs/[id]/heartbeat`, `/result`, `/fail`. Fora del middleware d'analítiques.
+  - Admin: `GET|POST /api/admin/transcriptions` (estat; encuar una o moltes, o `analyzeMissing` per a totes les públiques sense anàlisi), `PATCH /api/admin/transcriptions/[id]` (cancel·lar/reintentar), `POST /api/admin/transcription-workers` (crea i retorna el token un sol cop), `PATCH|DELETE /api/admin/transcription-workers/[id]`.
+  - Lease de 10 min; les feines caducades tornen a la cua en el claim següent (sense temporitzador).
+- UI: pestanya "Transcripcions" al panell d'admin (encuar per línies `url, títol, artista`, analitzar les publicades, cua amb estat/accions, workers i tokens). Al `NewSongStartPopup`, un enllaç de YouTube ofereix "Transcriure des de l'àudio".
+- **Worker CLI** (`tx worker --api https://guitarreo.cat --token ... [--device auto]`): envia l'anàlisi compacta i classifica les fallades (`kind: permanent|temporary`).
+
+**Pendent per tancar la fase**: fusionar la branca i desplegar; crear un worker a l'admin de producció i processar-hi 5 cançons reals des del PC.
 
 ### Fase 7 — App de Windows per a col·laboradors
 - **Instal·lador petit** (Inno Setup, unes desenes de MB) amb `uv` i ffmpeg portable. Al primer arrencament: detecta si hi ha GPU NVIDIA, instal·la PyTorch CPU o CUDA amb `uv` (0,5-2,5 GB) i descarrega els models (~3-5 GB) un sol cop. Una sola versió de l'instal·lable, sense necessitat de Python previ.
@@ -200,6 +231,7 @@ transcriptor/
 
 ### Fase 8 (opcional, futur): explotar l'anàlisi
 - Visor sincronitzat (lletra/acords seguint el vídeo) i acompanyaments a partir de `beats` + `chords`.
+- Primer pas: la funció de sincronització (TS, al canconer) `sync(anàlisi, content) → { temps de cada <ch>, inici/fi de cada línia, qualitat }`, calculada al moment (vegeu les decisions de la Fase 6). Validar-la amb les cançons del benchmark, que tenen anàlisi i `content` revisat.
 - Fine-tuning del model d'acords amb el repertori propi si el benchmark mostra errors sistemàtics.
 
 ---
@@ -217,4 +249,5 @@ transcriptor/
 - Fases 1-3: `tx run` sobre les 3 cançons → enganxar el `content` en una cançó de prova a l'editor del canconer i revisar-lo visualment; round-trip amb `model.ts`; `pytest`.
 - Fase 4: informe de benchmark amb ≥50 cançons. Objectiu orientatiu: ≥80% de concordança d'acords `majmin` en repertori de guitarra.
 - Fase 6: encuar 5 cançons des de l'admin, executar el worker al PC i veure-les aparèixer com a propostes. Matar el worker a mig procés: la feina torna a la cua. Dos workers alhora no agafen mai la mateixa feina, i un token revocat és rebutjat. `npx tsc --noEmit` al canconer.
+  Fet en local (2026-10-15): prova d'extrem a extrem del worker real contra `next dev` amb una còpia de la BD (pipeline substituït per anàlisis de la cache): tokens, prioritat, concurrència, lease caducat, modes `new`/`analyze`, errors permanents i temporals, duplicats; rutes d'admin per HTTP. Falta la prova amb àudio real a producció.
 - Fase 7: instal·lar l'app en un Windows net (sense Python), activar i desactivar el worker, processar una cançó. Imatge/instal·lació CUDA en una GPU llogada: el resultat és equivalent al de CPU, en molt menys temps. Sense GPU, torna a CPU sense petar.
