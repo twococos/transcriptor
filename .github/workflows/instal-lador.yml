@@ -98,7 +98,15 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" (Get-ChildItem signat\*.msi).FullName --title "Transcriptor ${{ github.ref_name }}" --generate-notes
+        run: |
+          $msi = (Get-ChildItem signat\*.msi).FullName
+          gh release view "${{ github.ref_name }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload "${{ github.ref_name }}" $msi --clobber
+          } else {
+            gh release create "${{ github.ref_name }}" $msi --title "Transcriptor ${{ github.ref_name }}" --generate-notes
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Crea la pre-release sense signar
         if: env.PUBLICACIO == 'true' && vars.SIGNPATH_ORGANIZATION_ID == ''
@@ -108,5 +116,13 @@ jobs:
         run: |
           $notes = "Instal·lador **sense signar** (encara no hi ha signatura de codi). Windows SmartScreen pot avisar-ne: " +
                    "*Més informació → Executa igualment*. Instruccions: [installer/README.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/installer/README.md)."
-          gh release create "${{ github.ref_name }}" (Get-ChildItem installer\dist\*.msi).FullName `
-            --title "Transcriptor ${{ github.ref_name }}" --prerelease --notes "$notes" --generate-notes
+          $msi = (Get-ChildItem installer\dist\*.msi).FullName
+          # Si la release ja existeix (creada a mà des de GitHub, que també crea l'etiqueta), només s'hi penja el MSI
+          gh release view "${{ github.ref_name }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload "${{ github.ref_name }}" $msi --clobber
+          } else {
+            gh release create "${{ github.ref_name }}" $msi `
+              --title "Transcriptor ${{ github.ref_name }}" --prerelease --notes "$notes" --generate-notes
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
