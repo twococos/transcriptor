@@ -20,6 +20,7 @@ SECTION_TYPES = ["Estrofa", "Tornada", "Pre-tornada", "Pont", "Solo", "Instrumen
                  "Intro", "Outro"]
 
 SIMILITUD_LINIA = 0.75
+CONTENCIO = 0.8
 BUIT_BLOC_S = 2.5
 MIN_LINIES_TRAM = 2
 FRACCIO_FINAL_PONT = 0.55
@@ -33,6 +34,15 @@ def _similars(a: str, b: str) -> bool:
     if not a or not b:
         return False
     return a == b or SequenceMatcher(None, a, b, autojunk=False).ratio() >= SIMILITUD_LINIA
+
+
+def _conte(a: str, b: str) -> bool:
+    """Si el text `a` és (aproximadament) dins de `b`: ≥ CONTENCIO de les lletres de `a` en blocs
+    comuns de ≥ 3 caràcters. Serveix quan les línies no estan tallades igual (lletra de l'ASR)."""
+    if len(a) < 8 or not b:
+        return False
+    blocs = SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks()
+    return sum(m.size for m in blocs if m.size >= 3) >= CONTENCIO * len(a)
 
 
 def _acords(elements: list[dict], idx: list[int]) -> set[str]:
@@ -62,9 +72,15 @@ def detecta(elements: list[dict], durada: float, durada_compas: float) -> list[d
     if actual:
         blocs.append(actual)
 
-    # 2. Línies repetides
-    repetida = {i: any(_similars(claus[i], claus[j]) for j in idx_linies if abs(j - i) > 1)
-                for i in idx_linies}
+    # 2. Línies repetides: iguals a una altra línia, o contingudes en dues línies seguides d'un
+    # altre lloc (quan la lletra ve de l'ASR, les repeticions no sempre es tallen igual)
+    finestres = [(idx_linies[k], idx_linies[k + 1], claus[idx_linies[k]] + " " + claus[idx_linies[k + 1]])
+                 for k in range(len(idx_linies) - 1)] + [(i, i, claus[i]) for i in idx_linies[-1:]]
+    repetida = {
+        i: any(_similars(claus[i], claus[j]) for j in idx_linies if abs(j - i) > 1)
+        or any(_conte(claus[i], text) for a, b, text in finestres if a - i > 1 or i - b > 1)
+        for i in idx_linies
+    }
 
     # 3. Trams dins de cada bloc segons si les línies són repetides
     trams: list[tuple[list[int], bool]] = []
@@ -93,7 +109,9 @@ def detecta(elements: list[dict], durada: float, durada_compas: float) -> list[d
         for j, (altres, _) in enumerate(trams):
             if j == k:
                 continue
-            coincidents = sum(any(_similars(c, claus[o]) for o in altres) for c in linies_k)
+            text_altres = " ".join(claus[o] for o in altres if o in claus)
+            coincidents = sum(any(_similars(c, claus[o]) for o in altres if o in claus)
+                              or _conte(c, text_altres) for c in linies_k)
             if coincidents >= max(2, len(linies_k) // 2):
                 return True
         return False

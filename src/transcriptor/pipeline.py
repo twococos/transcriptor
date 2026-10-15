@@ -165,7 +165,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
             avisos.append(f"{len(al['descartades'])} línies de la lletra no es canten i s'han descartat: "
                           + " / ".join(al["descartades"][:6]))
     else:
-        paraules = asr["paraules"]
+        paraules = lines_mod.uneix_fragments(asr["paraules"])
         inicis = [b["t"] for b in compas["beats"] if b["beat"] == 1]
         rangs = lines_mod.talla(paraules, asr["segments"], inicis, cfg.pausa_linia_s, cfg.max_paraules_linia)
         aparellades = None
