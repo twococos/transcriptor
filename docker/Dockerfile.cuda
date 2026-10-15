@@ -1,0 +1,19 @@
+# Worker del Transcriptor amb GPU NVIDIA (p. ex. una GPU llogada). NO PROVAT.
+# docker build -f docker/Dockerfile.cuda -t transcriptor:cuda .  ·  docker run --gpus all ...
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04
+
+COPY --from=ghcr.io/astral-sh/uv:0.13.1 /uv /usr/local/bin/uv
+ENV UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1 UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_PYTHON_INSTALL_DIR=/opt/python TX_HOME=/dades PATH=/opt/venv/bin:$PATH
+
+WORKDIR /app
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --frozen --no-dev --no-install-project --extra cuda --extra roformer
+COPY src ./src
+RUN uv sync --frozen --no-dev --no-editable --extra cuda --extra roformer
+
+VOLUME /dades
+RUN useradd --create-home tx && mkdir -p /dades && chown -R tx /dades
+USER tx
+ENTRYPOINT ["tx", "worker"]
+CMD ["--api", "https://guitarreo.cat", "--token", "CANVIA-HO", "--device", "auto"]

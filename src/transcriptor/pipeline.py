@@ -7,6 +7,7 @@ acabar cada etapa: el servidor va just de RAM.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 import time
@@ -152,6 +153,14 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
         al = lyrics_align.alinea(lin_text, asr["paraules"], durada)
         paraules, rangs = al["paraules"], al["linies"]
         aparellades = al["aparellades"]
+        if cfg.afinar_ctc and paraules:
+            from .stages import lyrics_ctc
+
+            clau = _hash(json.dumps([paraules, rangs], ensure_ascii=False))
+            ctc = cache.json("lyrics_ctc", {"model": lyrics_ctc.MODEL, "entrada": clau},
+                             lambda: dict(zip(("paraules", "afinades"),
+                                              lyrics_ctc.afina(veu, paraules, rangs, perfil))))
+            paraules = ctc["paraules"]
         if al["descartades"]:
             avisos.append(f"{len(al['descartades'])} línies de la lletra no es canten i s'han descartat: "
                           + " / ".join(al["descartades"][:6]))

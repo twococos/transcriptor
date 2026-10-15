@@ -1,0 +1,17 @@
+# Worker al servidor, amb límits perquè no afecti la web. NO PROVAT.
+# El token es passa per variable d'entorn (fitxer .env al costat, fora de git).
+services:
+  transcriptor-worker:
+    image: transcriptor:cpu
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.cpu
+    command: ["--api", "${TX_API:-https://guitarreo.cat}", "--token", "${TX_TOKEN}", "--device", "cpu"]
+    restart: unless-stopped
+    cpus: 3            # i5-7500: en deixa un per a la web
+    mem_limit: 5g      # ~6,5 GB lliures; Whisper turbo int8 + demucs hi caben en seqüència
+    cpu_shares: 256    # prioritat baixa respecte d'altres contenidors
+    volumes:
+      - transcriptor-dades:/dades
+volumes:
+  transcriptor-dades:
