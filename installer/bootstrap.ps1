@@ -79,13 +79,31 @@ if (-not (Test-Path (Join-Path $Dir "python\DLLs\_tkinter.pyd"))) {
 $env:UV_PROJECT_ENVIRONMENT = Join-Path $Dir ".venv"
 $env:UV_LINK_MODE = "copy"
 
+# Si l'app és oberta (p. ex. en executar el bootstrap a mà), el seu pythonw bloqueja fitxers del .venv
+Get-Process pythonw, python -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -and $_.Path.StartsWith((Resolve-Path $Dir).Path, "OrdinalIgnoreCase") } |
+    ForEach-Object { Write-Host "Es tanca el Transcriptor obert (procés $($_.Id))"; Stop-Process -Id $_.Id -Force }
+
+# Un .venv a mitges (instal·lació interrompuda o desfeta) no el reaprofita uv: es refà de zero
+$venv = Join-Path $Dir ".venv"
+if ((Test-Path $venv) -and -not (Test-Path (Join-Path $venv "Scripts\python.exe"))) {
+    Write-Host "El .venv anterior està incomplet: s'esborra"
+    Remove-Item -Recurse -Force $venv
+}
+
 $uv = Join-Path $Dir "uv.exe"
-& $uv sync --frozen --no-dev --no-editable --python $python --extra $Dispositiu --extra app
+function Sync-Uv([string]$Extra) {
+    # La sortida d'uv al registre. uv escriu a stderr: amb "Stop", PowerShell 5.1 ho prendria per un error.
+    $ErrorActionPreference = "Continue"
+    & $uv sync --frozen --no-dev --no-editable --python $python --extra $Extra --extra app 2>&1 |
+        ForEach-Object { "$_" } | Out-Host
+}
+Sync-Uv $Dispositiu
 if ($LASTEXITCODE -ne 0 -and $Dispositiu -eq "cuda") {
     Write-Host "La instal·lació CUDA ha fallat; es torna a provar amb CPU"
-    & $uv sync --frozen --no-dev --no-editable --python $python --extra cpu --extra app
+    Sync-Uv "cpu"
 }
-if ($LASTEXITCODE -ne 0) { Stop-Transcript | Out-Null; exit $LASTEXITCODE }
+if ($LASTEXITCODE -ne 0) { Write-Host "uv sync ha fallat (codi $LASTEXITCODE)"; Stop-Transcript | Out-Null; exit $LASTEXITCODE }
 
 # Comprovació ràpida
 & (Join-Path $Dir ".venv\Scripts\python.exe") -c "import transcriptor, tkinter, torch; print('Transcriptor', transcriptor.__version__, '- torch', torch.__version__, '- CUDA', torch.cuda.is_available())"

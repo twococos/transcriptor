@@ -71,6 +71,14 @@
     <CustomAction Id="Bootstrap" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec"
                   Execute="deferred" Impersonate="yes" Return="check" />
 
+    <!-- Abans de tocar cap fitxer (també abans de treure la versió vella en actualitzar): tanca l'app si està oberta.
+         Si no, el seu pythonw bloqueja fitxers del .venv, uv sync falla i la instal·lació es desfà (1603).
+         Immediata (fora de la transacció) perquè RemoveExistingProducts va abans d'InstallInitialize. -->
+    <SetProperty Id="WixQuietExecCmdLine" Before="TancaApp" Sequence="execute"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command &quot;Get-Process pythonw,python -ErrorAction SilentlyContinue | Where-Object Path -like '[INSTALLFOLDER]*' | Stop-Process -Force; Start-Sleep -Seconds 2&quot;" />
+    <CustomAction Id="TancaApp" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec"
+                  Execute="immediate" Return="ignore" />
+
     <!-- En desinstal·lar (no en actualitzar): fora l'entorn i el Python que ha creat el bootstrap -->
     <SetProperty Id="Neteja" Before="Neteja" Sequence="execute"
                  Value="&quot;[System64Folder]cmd.exe&quot; /c rmdir /s /q &quot;[INSTALLFOLDER].venv&quot; &amp; rmdir /s /q &quot;[INSTALLFOLDER]python&quot; &amp; del /q &quot;[INSTALLFOLDER]instal-lacio.log&quot;" />
@@ -78,6 +86,7 @@
                   Execute="deferred" Impersonate="yes" Return="ignore" />
 
     <InstallExecuteSequence>
+      <Custom Action="TancaApp" Before="RemoveExistingProducts" />
       <Custom Action="Bootstrap" After="InstallFiles" Condition="NOT REMOVE~=&quot;ALL&quot;" />
       <Custom Action="Neteja" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
     </InstallExecuteSequence>
