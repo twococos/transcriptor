@@ -15,6 +15,7 @@ import platform
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
 
 import requests
@@ -45,7 +46,9 @@ class FeinaPerduda(Exception):
 class EstatWorker:
     """Estat observable (per a l'app d'escriptori)."""
     actiu: bool = False
+    fase: str = "aturat"  # aturat | esperant | pausa | processant | sense_connexio
     feina_actual: str | None = None
+    inici_feina: float | None = None  # epoch
     fetes: int = 0
     fallades: int = 0
     temps_mitja_s: float = 0.0
@@ -102,8 +105,10 @@ class Client:
 class Worker:
     def __init__(self, client: Client, cfg: Config, perfil: Perfil,
                  en_canvi: Callable[[EstatWorker], None] | None = None,
-                 pot_treballar: Callable[[], str | None] | None = None):
-        """`pot_treballar()` retorna None si es pot agafar feina, o el motiu per esperar."""
+                 pot_treballar: Callable[[], str | None] | None = None,
+                 en_feta: Callable[[dict, object, Path, float], None] | None = None):
+        """`pot_treballar()` retorna None si es pot agafar feina, o el motiu per esperar.
+        `en_feta(feina, resultat, wav, segons)`: es crida quan una feina acaba bé, abans d'esborrar l'àudio."""
         self.client = client
         self.cfg = cfg
         self.perfil = perfil
@@ -111,9 +116,12 @@ class Worker:
         self.atura = threading.Event()
         self.en_canvi = en_canvi or (lambda _e: None)
         self.pot_treballar = pot_treballar or (lambda: None)
+        self.en_feta = en_feta
 
-    def _avisa(self, missatge: str) -> None:
+    def _avisa(self, missatge: str, fase: str | None = None) -> None:
         self.estat.missatge = missatge
+        if fase:
+            self.estat.fase = fase
         log.info(missatge)
         self.en_canvi(self.estat)
 
@@ -130,7 +138,8 @@ class Worker:
     def processa(self, feina: dict) -> None:
         id_feina = feina["id"]
         self.estat.feina_actual = f"{feina.get('title') or ''} — {feina.get('artist') or ''}".strip(" —")
-        self._avisa(f"Processant: {self.estat.feina_actual or feina['source_url']}")
+        self.estat.inici_feina = time.time()
+        self._avisa(f"Processant: {self.estat.feina_actual or feina['source_url']}", "processant")
         perduda, fi = threading.Event(), threading.Event()
         batec = threading.Thread(target=self._batec, daemon=True,
                                  args=(id_feina, float(feina.get("lease_seconds", 600)), perduda, fi))
@@ -151,6 +160,11 @@ class Worker:
             self.estat.fetes += 1
             self.estat.temps_mitja_s += (durada - self.estat.temps_mitja_s) / self.estat.fetes
             self.estat.historial.append({"titol": self.estat.feina_actual, "segons": round(durada), "ok": True})
+            if self.en_feta:
+                try:
+                    self.en_feta(feina, res, cache.cami("audio.wav"), durada)
+                except Exception:  # noqa: BLE001 — desar-la en local no ha de fer fallar la feina
+                    log.exception("No s'ha pogut desar la feina %s en local", id_feina)
         except InterruptedError:
             self.client.falla(id_feina, "Worker aturat", alliberada=True)
         except KeyboardInterrupt:
@@ -169,6 +183,7 @@ class Worker:
             fi.set()
             cache.esborra_audio()  # no s'emmagatzema àudio de YouTube
             self.estat.feina_actual = None
+            self.estat.inici_feina = None
             self.estat.historial = self.estat.historial[-50:]
             self.en_canvi(self.estat)
 
@@ -179,7 +194,7 @@ class Worker:
             while not self.atura.is_set():
                 motiu = self.pot_treballar()
                 if motiu:
-                    self._avisa(f"En pausa: {motiu}")
+                    self._avisa(f"En pausa: {motiu}", "pausa")
                     self.atura.wait(ESPERA_MIN_S)
                     continue
                 try:
@@ -187,12 +202,13 @@ class Worker:
                 except (VersioMassaAntiga, PermissionError):
                     raise
                 except requests.RequestException as e:
-                    self._avisa(f"Sense connexió amb l'API ({e.__class__.__name__}); reintent en {espera} s")
+                    self._avisa(f"Sense connexió amb l'API ({e.__class__.__name__}); reintent en {espera} s",
+                                "sense_connexio")
                     self.atura.wait(espera)
                     espera = min(espera * 2, ESPERA_MAX_S)
                     continue
                 if feina is None:
-                    self._avisa("Cua buida; esperant feina")
+                    self._avisa("Cua buida; esperant feina", "esperant")
                     if una:
                         return
                     self.atura.wait(espera)
@@ -204,7 +220,7 @@ class Worker:
                     return
         finally:
             self.estat.actiu = False
-            self._avisa("Aturat")
+            self._avisa("Aturat", "aturat")
 
 
 def executa_worker(args) -> int:

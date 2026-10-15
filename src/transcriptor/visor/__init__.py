@@ -19,15 +19,17 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 PAGINA = Path(__file__).with_name("visor.html")
+mimetypes.add_type("audio/ogg", ".opus")  # l'àudio que desa l'app (fetes.py)
 
 
 def troba_audio(analisi: dict, json_path: Path) -> Path | None:
-    """L'àudio d'origen si encara és al disc (bench: work/bench/audio/<id>.*)."""
+    """Un `audio.*` al costat de l'anàlisi (el que desa l'app, fetes.py) o l'àudio d'origen si encara és
+    al disc (bench: work/bench/audio/<id>.*)."""
+    for f in json_path.parent.glob("audio.*"):
+        return f
     fitxer = (analisi.get("source") or {}).get("fitxer")
     if fitxer and Path(fitxer).is_file():
         return Path(fitxer)
-    for f in json_path.parent.glob("audio.*"):
-        return f
     return None
 
 
@@ -98,21 +100,29 @@ def _handler(json_path: Path, audio: Path | None):
     return H
 
 
-def serveix(cami: str, audio: str | None = None, port: int = 8765, obre: bool = True) -> int:
+def inicia(cami: str | Path, audio: str | Path | None = None, port: int = 0
+           ) -> tuple[ThreadingHTTPServer, str, dict, Path | None]:
+    """Crea el servidor (sense engegar-lo). Retorna (servidor, url, anàlisi, àudio)."""
     json_path = Path(cami)
     if json_path.is_dir():
         json_path = json_path / "analysis.json"
     if not json_path.is_file():
-        print(f"No trobo {json_path}")
-        return 1
+        raise FileNotFoundError(f"No trobo {json_path}")
     analisi = json.loads(json_path.read_text(encoding="utf-8"))
     fitxer_audio = Path(audio) if audio else troba_audio(analisi, json_path)
     if fitxer_audio and not fitxer_audio.is_file():
-        print(f"No trobo l'àudio {fitxer_audio}")
-        return 1
-
+        raise FileNotFoundError(f"No trobo l'àudio {fitxer_audio}")
     srv = ThreadingHTTPServer(("127.0.0.1", port), _handler(json_path, fitxer_audio))
-    url = f"http://127.0.0.1:{srv.server_address[1]}/"
+    return srv, f"http://127.0.0.1:{srv.server_address[1]}/", analisi, fitxer_audio
+
+
+def serveix(cami: str, audio: str | None = None, port: int = 8765, obre: bool = True) -> int:
+    try:
+        srv, url, analisi, fitxer_audio = inicia(cami, audio, port)
+    except FileNotFoundError as e:
+        print(e)
+        return 1
+    json_path = Path(cami) / "analysis.json" if Path(cami).is_dir() else Path(cami)
     font = fitxer_audio or (f"YouTube {analisi['source']['youtube_id']}"
                             if analisi.get("source", {}).get("youtube_id") else "cap (arrossega'n un a la pàgina)")
     print(f"Visor: {url}\n  anàlisi: {json_path}\n  àudio:   {font}\n(Ctrl+C per aturar)")

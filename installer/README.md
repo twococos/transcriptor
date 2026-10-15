@@ -16,9 +16,18 @@ En instal·lar:
 Forçar el dispositiu: `msiexec /i Transcriptor-<versió>.msi DISPOSITIU=cpu`.
 En desinstal·lar s'esborren també el `.venv` i el Python (en actualitzar, no).
 
-Els models (~2 GB) es baixen el primer cop que s'activa el worker, i l'app en mostra el progrés.
+Els models (~1,8 GB en CPU) es baixen el primer cop que s'activa el worker. L'app en mostra el progrés
+amb els bytes rebuts, la velocitat i el temps que falta (a ~1,2 MB/s, uns 25 min). Un compte de Hugging
+Face no ho accelera: el límit és la connexió (el model de Beat This!, que no és a Hugging Face, baixa a
+la mateixa velocitat); el token només amplia el nombre de peticions permeses.
+
 Les dades (models, cache) van a `%LOCALAPPDATA%\Transcriptor\dades`; la configuració i el registre
 a `%APPDATA%\Transcriptor`. El token es desa xifrat amb DPAPI (només el pot llegir aquell usuari de Windows).
+Les cançons fetes es desen a `dadesetes\<id>` (anàlisi i, si l'usuari ho vol, l'àudio en Opus,
+~3 MB) per obrir-les al visor des de l'app; es poden esborrar d'una en una o totes alhora.
+
+L'app s'executa amb `pythonw` (sense consola, `sys.stdout` és `None`): `main()` redirigeix stdout i
+stderr a `os.devnull`, perquè torch.hub i tqdm hi escriuen el progrés de les descàrregues.
 
 ## Per què MSI i Python oficial: Smart App Control
 

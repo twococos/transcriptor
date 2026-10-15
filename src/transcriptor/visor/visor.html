@@ -3,39 +3,57 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Visor de sincronització</title>
+<title>Visor · Transcriptor</title>
+<script>
+// Tema: el que passa l'app (?tema=clar|fosc, segons el tema de Windows); si no, l'últim triat; si no, el del sistema.
+(() => { const q = new URLSearchParams(location.search).get("tema");
+  let t = q === "fosc" ? "dark" : q === "clar" ? "light" : null;
+  if (!t) { try { t = localStorage.getItem("visor-tema"); } catch (e) { /* sense emmagatzematge */ } }
+  if (!t) t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  document.documentElement.dataset.theme = t; })();
+</script>
 <style>
+/* Colors de l'app d'escriptori (tema Sun Valley de Windows 11 + taronja del Transcriptor) */
 :root {
-  --bg: #f6f5f2; --panel: #ffffff; --text: #1d1d1b; --muted: #6d6a64; --line: #e2dfd8;
-  --accent: #c2410c; --accent-soft: #fde7d9; --beat: #2563eb; --beat-soft: #dbe6fd;
-  --word: #15803d; --word-soft: #dcf2e3; --warn: #b45309; --sec-a: #efe9fb; --sec-b: #e6f1f6;
-  --mark: #be123c;
+  --bg: #f3f3f3; --panel: #fbfbfb; --text: #1c1c1c; --muted: #6b6b6b; --line: #e3e3e3; --control: #ffffff;
+  --primary: #005fb8; --primary-text: #ffffff;
+  --accent: #e6781e; --accent-soft: #fcebdc; --beat: #3b82f6; --beat-soft: #dbe7fd;
+  --word: #15803d; --word-soft: #dcf2e3; --warn: #b45309; --sec-a: #f0ebfa; --sec-b: #e4f0f6;
+  --mark: #be123c; color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #161614; --panel: #201f1d; --text: #ecebe7; --muted: #9a968e; --line: #34322e;
-    --accent: #fb923c; --accent-soft: #4a2a17; --beat: #60a5fa; --beat-soft: #1c2a44;
-    --word: #4ade80; --word-soft: #173322; --warn: #fbbf24; --sec-a: #2a2538; --sec-b: #1f2e35;
-    --mark: #fb7185;
-  }
+:root[data-theme="dark"] {
+  --bg: #1c1c1c; --panel: #272727; --text: #fafafa; --muted: #9a9a9a; --line: #383838; --control: #2f2f2f;
+  --primary: #57c8ff; --primary-text: #000000;
+  --accent: #f0903e; --accent-soft: #4a2c14; --beat: #60a5fa; --beat-soft: #1c2a44;
+  --word: #4ade80; --word-soft: #173322; --warn: #fbbf24; --sec-a: #2c2738; --sec-b: #1f2e35;
+  --mark: #fb7185; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text);
-  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
-main { max-width: 1180px; margin: 0 auto; padding: 16px; }
-header h1 { font-size: 20px; margin: 0; }
+  font: 15px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; }
+main { max-width: 1180px; margin: 0 auto; padding: 20px 16px; }
+header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 4px; }
+header .cap { flex: 1; min-width: 0; }
+header .marca { font-size: 13px; color: var(--muted); }
+header .marca b { color: var(--accent); font-weight: 600; }
+header h1 { font-size: 24px; font-weight: 600; margin: 2px 0 0; }
 header .meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
 details.avisos { margin-top: 6px; font-size: 13px; color: var(--warn); }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04); }
 .fila { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 #reproductor { margin-top: 12px; display: grid; gap: 10px; }
 #yt { width: 100%; max-width: 480px; aspect-ratio: 16/9; }
 #yt:empty { display: none; }
 audio { width: 100%; }
-button, select, input[type=number] { font: inherit; font-size: 13px; color: var(--text); background: var(--bg);
-  border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px; }
+button, select, input[type=number] { font: inherit; font-size: 13px; color: var(--text); background: var(--control);
+  border: 1px solid var(--line); border-radius: 4px; padding: 5px 11px; }
 button { cursor: pointer; }
+button:hover { filter: brightness(.97); }
+:root[data-theme="dark"] button:hover { filter: brightness(1.15); }
+button.primari { background: var(--primary); color: var(--primary-text); border-color: var(--primary); font-weight: 600; }
 button.on { background: var(--accent-soft); border-color: var(--accent); }
+#bTema { flex: none; margin-top: 4px; }
 input[type=number] { width: 72px; }
 label { font-size: 13px; color: var(--muted); display: inline-flex; gap: 5px; align-items: center; }
 .temps { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); min-width: 120px; }
@@ -83,9 +101,13 @@ kbd { font-size: 11px; border: 1px solid var(--line); border-radius: 4px; paddin
 <body>
 <main>
   <header>
-    <h1 id="titol">Visor de sincronització</h1>
-    <div class="meta" id="meta">Carregant l'anàlisi…</div>
-    <details class="avisos" id="avisos" hidden><summary></summary><ul></ul></details>
+    <div class="cap">
+      <div class="marca">Transcriptor · <b>per a El Cançoner</b></div>
+      <h1 id="titol">Visor de sincronització</h1>
+      <div class="meta" id="meta">Carregant l'anàlisi…</div>
+      <details class="avisos" id="avisos" hidden><summary></summary><ul></ul></details>
+    </div>
+    <button id="bTema" title="Canvia entre el tema clar i el fosc"></button>
   </header>
 
   <section id="reproductor" class="panel">
@@ -94,7 +116,7 @@ kbd { font-size: 11px; border: 1px solid var(--line); border-radius: 4px; paddin
     <div id="zonaFitxer">Arrossega aquí un fitxer d'àudio (o un altre <code>analysis.json</code>) ·
       <label><input type="file" id="triaFitxer" accept="audio/*,video/*,.json"></label></div>
     <div class="fila">
-      <button id="bPlay">▶ Reprodueix</button>
+      <button id="bPlay" class="primari">▶ Reprodueix</button>
       <button id="bEnrere">« 5 s</button>
       <button id="bEndavant">5 s »</button>
       <span class="temps" id="temps">0:00.0</span>
@@ -408,7 +430,14 @@ const cv = $("tl"), g2 = cv.getContext("2d");
 let colors = {};
 function llegeixColors() { const cs = getComputedStyle(document.documentElement);
   for (const k of ["text", "muted", "line", "accent", "beat", "word", "warn", "sec-a", "sec-b", "mark", "panel"]) colors[k] = cs.getPropertyValue("--" + k).trim(); }
-llegeixColors(); matchMedia("(prefers-color-scheme: dark)").addEventListener("change", llegeixColors);
+llegeixColors();
+function etiquetaTema() { $("bTema").textContent = document.documentElement.dataset.theme === "dark" ? "☀ Tema clar" : "☾ Tema fosc"; }
+etiquetaTema();
+$("bTema").addEventListener("click", () => {
+  const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem("visor-tema", t); } catch (e) { /* sense emmagatzematge */ }
+  etiquetaTema(); llegeixColors(); });
 const CAP = 0.3;   // posició del capçal (fracció de l'amplada)
 const FRANGES = { sec: [4, 18], acord: [28, 36], puls: [72, 40], mot: [120, 40], notes: [168, 14] };
 function pintaTL(t) {

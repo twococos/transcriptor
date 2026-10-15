@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 log = logging.getLogger(__name__)
 
@@ -36,12 +37,31 @@ def _fils_cpu() -> int:
     return max(1, logics // 2) if logics >= 4 else logics
 
 
+def _nom_cpu() -> str:
+    """El nom comercial ("Intel(R) Core(TM) i7-6700 CPU @ 3.40GHz"); platform.processor() a Windows només
+    dona la família ("Intel64 Family 6 Model 94...")."""
+    import platform
+
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\CentralProcessor\0") as k:
+            return " ".join(str(winreg.QueryValueEx(k, "ProcessorNameString")[0]).split())
+    except (ImportError, OSError):
+        pass
+    try:
+        for linia in Path("/proc/cpuinfo").read_text().splitlines():
+            if linia.startswith("model name"):
+                return linia.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return platform.processor() or "CPU"
+
+
 def _perfil_cpu(motiu: str | None = None) -> Perfil:
     if motiu:
         log.warning("Es fa servir la CPU: %s", motiu)
-    import platform
-
-    return Perfil(device="cpu", nom=platform.processor() or "CPU", vram_gb=0.0, fils=_fils_cpu(),
+    return Perfil(device="cpu", nom=_nom_cpu(), vram_gb=0.0, fils=_fils_cpu(),
                   whisper_compute_type="int8", separador="htdemucs", demucs_shifts=0)
 
 

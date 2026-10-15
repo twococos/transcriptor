@@ -1570,6 +1570,15 @@ wheels = [
 ]
 
 [[package]]
+name = "sv-ttk"
+version = "2.6.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/ca/9625914e7a7e58ce9f0d8d6a5eb29975bab077ce58a36cf86f863d188cd3/sv_ttk-2.6.1.tar.gz", hash = "sha256:47589d5e20398cf404e8362f24f3ed48f3830cd0ace056d83354fa25d8e4fe48", size = 49640, upload-time = "2025-06-08T16:14:21.333Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5b/36/32629d8bab9bccd54a36716a960ba1148fca4c1fd453370dba0b42d712ea/sv_ttk-2.6.1-py3-none-any.whl", hash = "sha256:8ca5944f95431a911986b00c54e7f44608f3f811382cd985fd14bb3e65f95d97", size = 50076, upload-time = "2025-06-08T16:14:20.402Z" },
+]
+
+[[package]]
 name = "sympy"
 version = "1.14.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1754,7 +1763,7 @@ wheels = [
 
 [[package]]
 name = "transcriptor"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "beat-this" },
@@ -1777,6 +1786,7 @@ dependencies = [
 app = [
     { name = "pillow" },
     { name = "pystray" },
+    { name = "sv-ttk" },
 ]
 cpu = [
     { name = "torch", version = "2.14.1+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" } },
@@ -1816,6 +1826,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.13" },
     { name = "soundfile", specifier = ">=0.13" },
     { name = "soxr", specifier = ">=0.5" },
+    { name = "sv-ttk", marker = "extra == 'app'", specifier = ">=2.6" },
     { name = "torch", marker = "extra == 'cpu'", specifier = ">=2.6", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "transcriptor", extra = "cpu" } },
     { name = "torch", marker = "extra == 'cuda'", specifier = ">=2.6", index = "https://download.pytorch.org/whl/cu126", conflict = { package = "transcriptor", extra = "cuda" } },
     { name = "torchaudio", marker = "extra == 'cpu'", specifier = ">=2.6", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "transcriptor", extra = "cpu" } },

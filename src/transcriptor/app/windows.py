@@ -42,6 +42,20 @@ def prioritat_baixa() -> None:
     ctypes.windll.kernel32.SetPriorityClass(handle, BELOW_NORMAL_PRIORITY_CLASS)
 
 
+def tema_fosc() -> bool:
+    """Si l'usuari té les aplicacions de Windows en mode fosc."""
+    if not ES_WINDOWS:
+        return False
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize") as k:
+            return winreg.QueryValueEx(k, "AppsUseLightTheme")[0] == 0
+    except OSError:
+        return False
+
+
 def arrencada_activa() -> bool:
     if not ES_WINDOWS:
         return False

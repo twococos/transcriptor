@@ -30,6 +30,7 @@ class Preferencies:
     max_fils: int = 0  # 0 = automàtic
     dispositiu: str = "auto"
     arrencar_amb_windows: bool = False
+    desa_audio: bool = True  # àudio de les cançons fetes, per al visor (fetes.py)
     extra: dict = field(default_factory=dict)
 
     @property

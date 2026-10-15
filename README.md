@@ -106,3 +106,5 @@ El Transcriptor no envia cap informació a cap sistema de la xarxa si l'usuari n
   resultat de les feines, la versió del Transcriptor, el nom de l'ordinador i el dispositiu de
   càlcul (CPU o el model i la memòria de la GPU). Sense token
   configurat, no s'hi connecten.
+- L'app desa en aquest ordinador les cançons que ha fet (anàlisi i, opcionalment, l'àudio) per
+  obrir-les al visor. No s'envien enlloc i es poden esborrar des de l'app.

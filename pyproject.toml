@@ -1,6 +1,6 @@
 [project]
 name = "transcriptor"
-version = "0.1.0"
+version = "0.1.1"
 description = "De l'àudio a lletra + acords sincronitzats per a El Cançoner (guitarreo.cat)"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -30,7 +30,11 @@ roformer = ["audio-separator>=0.47"]
 # Afinament de l'alineació amb wav2vec2 català (CTC)
 ctc = ["transformers>=4.50"]
 # App d'escriptori de Windows (Fase 7)
-app = ["pystray>=0.19", "pillow>=10.0"]
+app = [
+    "pystray>=0.19",
+    "pillow>=10.0",
+    "sv-ttk>=2.6",
+]
 
 [project.scripts]
 tx = "transcriptor.cli:main"
