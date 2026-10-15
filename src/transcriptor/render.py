@@ -16,6 +16,8 @@ ESPAI_ACORDS = "    "
 
 def linia_amb_acords(text: str, acords: list[list]) -> str:
     """Insereix `<ch>` a les posicions de caràcter. Les posicions més enllà del text van al final."""
+    # "<" i ">" dins la lletra trencarien el format de la BD (parse de model.ts del canconer)
+    text = text.replace("<", "‹").replace(">", "›")
     sortida, cursor = [], 0
     for pos, etiqueta, *_ in sorted(acords, key=lambda a: a[0]):
         if pos > len(text):

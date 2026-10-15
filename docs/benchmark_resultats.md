@@ -12,7 +12,7 @@
 | WER de l'ASR (orientatiu) | 0.381 |
 | To (vs `key` de la BD) | exacte: 77, quinta: 14, relatiu: 9, altre: 8 |
 | To (vs to dels acords de la BD) | 98/108 exacte |
-| Temps mitjà per cançó | 2 s |
+| Temps mitjà per cançó | 1 s |
 
 ## Referències sense problemes (90)
 
@@ -26,7 +26,7 @@
 | WER de l'ASR (orientatiu) | 0.382 |
 | To (vs `key` de la BD) | exacte: 64, quinta: 10, relatiu: 8, altre: 8 |
 | To (vs to dels acords de la BD) | 83/90 exacte |
-| Temps mitjà per cançó | 2 s |
+| Temps mitjà per cançó | 1 s |
 
 ## Publicades (19)
 

@@ -20,6 +20,7 @@ log = logging.getLogger(__name__)
 URL_LRCLIB = "https://lrclib.net/api/search"
 _RE_TEMPS_LRC = re.compile(r"^\s*\[\d+:\d+(?:\.\d+)?\]\s*")
 _RE_TAGS = re.compile(r"<ch>[^<]*</ch>")
+_RE_HTML = re.compile(r"</?[a-zA-Z][^>]*>")  # restes d'HTML dels importadors (p. ex. "</em>")
 
 
 _RE_REPETICIO_SOLA = re.compile(r"^[\(\[]?\s*(?:x\s*(\d+)|(\d+)\s*x|(bis))\s*[\)\]]?$", re.I)

@@ -37,6 +37,8 @@ la BD es fa servir com a text conegut (mode "db"), com quan es reprocessi una ca
   (penalització 8: 81,5 % / 70,2 %). Hem preferit no perdre acords; la revisió humana en treu.
 - **Temps** (passada completa, CPU): mediana de **226 s per cançó** (p90: 293 s), uns 380 al dia.
   Memòria màxima del procés: **2,4 GB**, de manera que hi cap al servidor.
+- **Format**: els 108 `content` generats passen la validació amb el `parse`/`serialize` real del canconer
+  (`tools/valida_content.mts`), noms de secció de `SECTION_TYPES` i acords vàlids.
 - Les 3 cançons de referència: L'estaca 100 % acords / estructura 100 % (6/8 detectat), Bon dia 100 % /
   81 %, La gent que estimo 98 % / 100 % (detecta el capo 1).
 
@@ -91,5 +93,5 @@ Per revisar quan convingui (no s'ha tocat res del canconer):
 6. **Sense seccions**: 102 "Un Lloc", 107 "Aixi I Tot", 108 "L'univers", 109 "Per A Tu" (i 58, 72, 73,
    82, 100 amb una sola secció).
 7. **Notació no estàndard** dins del content: acords amb fletxa ("E→A", "C→D"), solfeig com a text
-   ("FA# SI (x8)").
+   ("FA# SI (x8)"), i restes d'HTML a la lletra ("</em>", p. ex. a 3, 12 i 49).
 8. Vídeos que YouTube no deixa baixar (403 persistent): 24, 42, 107.

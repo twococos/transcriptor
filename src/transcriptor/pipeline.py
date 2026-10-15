@@ -115,7 +115,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     font_lletra = cache.json(
         "lyrics_source",
         {"titol": titol, "artista": artista, "usuari": _hash(entrada.text_usuari),
-         "bd": _hash(entrada.content_bd), "lrclib": cfg.lrclib, "versio": 2},
+         "bd": _hash(entrada.content_bd), "lrclib": cfg.lrclib, "versio": 3},
         lambda: dict(zip(("text", "font"), lyrics_source.obte(
             entrada.text_usuari, entrada.content_bd, titol, artista, durada, cfg.lrclib))),
     )
