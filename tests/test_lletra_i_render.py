@@ -82,3 +82,10 @@ def test_render_amb_capo_transposa_a_formes():
     elements = [{"tipus": "linia", "start": 0, "end": 1, "text": "hola", "acords": [[0, "A#", 0.0]]}]
     seccions = [{"name": "Estrofa 1", "elements": [0]}]
     assert render.content(elements, seccions, capo=1) == "<sec>Estrofa 1</sec>\n<ch>A</ch>hola"
+
+
+def test_text_de_content_expandeix_repeticions():
+    c = ("<sec>Estrofa 1</sec>\nu<ch>A</ch>n\ndos\nx2\n<sec>Tornada</sec>\n"
+         "tres (x3)\nquatre\nbis")
+    assert text_de_content(c).split("\n") == ["un", "dos", "un", "dos", "tres", "tres", "tres", "quatre",
+                                             "tres", "tres", "tres", "quatre"]

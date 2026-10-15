@@ -31,6 +31,7 @@ class Config(BaseModel):
     # Lletra
     whisper_model: str = "large-v3-turbo"
     whisper_compute_type: str | None = None
+    vad_llindar: float = 0.5  # VAD de Whisper: més baix = menys risc de perdre veu fluixa
     lrclib: bool = True
     afinar_ctc: bool = False  # refinament amb wav2vec2 català (extra `ctc`)
     # Línies i estructura

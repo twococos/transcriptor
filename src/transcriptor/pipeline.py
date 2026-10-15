@@ -112,7 +112,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     font_lletra = cache.json(
         "lyrics_source",
         {"titol": titol, "artista": artista, "usuari": _hash(entrada.text_usuari),
-         "bd": _hash(entrada.content_bd), "lrclib": cfg.lrclib},
+         "bd": _hash(entrada.content_bd), "lrclib": cfg.lrclib, "versio": 2},
         lambda: dict(zip(("text", "font"), lyrics_source.obte(
             entrada.text_usuari, entrada.content_bd, titol, artista, durada, cfg.lrclib))),
     )
@@ -122,8 +122,10 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     # es va detectar com a anglès perquè l'inici és instrumental)
     idioma_asr = entrada.idioma or (detecta_idioma(font_lletra["text"]) if font_lletra["text"] else None)
     asr = cache.json("lyrics_asr", {"model": cfg.whisper_model, "compute_type": compute_type,
-                                    "idioma": idioma_asr, "veu": separador, "deteccio": 6},
-                     lambda: lyrics_asr.transcriu(veu, perfil, cfg.whisper_model, compute_type, idioma_asr))
+                                    "idioma": idioma_asr, "veu": separador, "deteccio": 6,
+                                    **({"vad": cfg.vad_llindar} if cfg.vad_llindar != 0.5 else {})},
+                     lambda: lyrics_asr.transcriu(veu, perfil, cfg.whisper_model, compute_type, idioma_asr,
+                                                  vad_llindar=cfg.vad_llindar))
 
     idioma = idioma_asr or asr.get("idioma") or "ca"
 

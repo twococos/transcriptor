@@ -22,15 +22,43 @@ _RE_TEMPS_LRC = re.compile(r"^\s*\[\d+:\d+(?:\.\d+)?\]\s*")
 _RE_TAGS = re.compile(r"<ch>[^<]*</ch>")
 
 
+_RE_REPETICIO_SOLA = re.compile(r"^[\(\[]?\s*(?:x\s*(\d+)|(\d+)\s*x|(bis))\s*[\)\]]?$", re.I)
+_RE_REPETICIO_FINAL = re.compile(r"\s*[\(\[]\s*(?:x\s*(\d+)|(\d+)\s*x|(bis))\s*[\)\]]\s*$", re.I)
+
+
+def _vegades(m: re.Match) -> int:
+    return 2 if m.group(3) else int(m.group(1) or m.group(2))
+
+
 def text_de_content(content: str) -> str:
-    """Treu acords i seccions d'un `content` del canconer (per fer servir la lletra de la BD)."""
-    linies = []
+    """Treu acords i seccions d'un `content` del canconer (per fer servir la lletra de la BD).
+
+    Expandeix les marques de repetició habituals a la BD (78 casos al benchmark): una línia "x2" o
+    "bis" sola repeteix el bloc anterior (des de la secció o la marca anterior), i "(x2)" al final
+    d'una línia repeteix aquella línia. Així el text coincideix amb el que es canta.
+    """
+    linies: list[str] = []
+    inici_bloc = 0
     for l in content.split("\n"):
         if l.strip().startswith("<sec>"):
+            inici_bloc = len(linies)
             continue
         neta = re.sub(r"\s+", " ", _RE_TAGS.sub("", l)).strip()
-        if neta:
-            linies.append(neta)
+        if not neta:
+            continue
+        m = _RE_REPETICIO_SOLA.match(neta)
+        if m:
+            bloc = linies[inici_bloc:]
+            for _ in range(_vegades(m) - 1):
+                linies.extend(bloc)
+            inici_bloc = len(linies)
+            continue
+        m = _RE_REPETICIO_FINAL.search(neta)
+        if m:
+            neta = neta[: m.start()].strip()
+            linies.extend([neta] * _vegades(m))
+            continue
+        linies.append(neta)
     return "\n".join(linies)
 
 

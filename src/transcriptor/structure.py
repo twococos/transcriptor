@@ -100,6 +100,25 @@ def detecta(elements: list[dict], durada: float, durada_compas: float) -> list[d
 
     tipus = ["Tornada" if rep and es_tornada(k) else "Estrofa" for k, (_, rep) in enumerate(trams)]
 
+    # Pre-tornada: dins d'una tornada, les línies inicials que es repeteixen menys vegades que el
+    # nucli (p. ex. "A la deriva": "Atrapar la lluna…" surt 2 cops i "Uoh, que la vida…" 3 cops)
+    def repeticions(i: int) -> int:
+        return sum(_similars(claus[i], claus[j]) for j in idx_linies)
+
+    nous_trams, nous_tipus = [], []
+    for (idx, rep), t in zip(trams, tipus):
+        if t == "Tornada" and len(idx) >= 2 * MIN_LINIES_TRAM:
+            rep_linia = [repeticions(i) if elements[i]["tipus"] == "linia" else 0 for i in idx]
+            nucli = max(rep_linia)
+            tall = next((k for k, r in enumerate(rep_linia) if r == nucli), 0)
+            if tall >= MIN_LINIES_TRAM and len(idx) - tall >= MIN_LINIES_TRAM:
+                nous_trams += [(idx[:tall], rep), (idx[tall:], rep)]
+                nous_tipus += ["Pre-tornada", "Tornada"]
+                continue
+        nous_trams.append((idx, rep))
+        nous_tipus.append(t)
+    trams, tipus = nous_trams, nous_tipus
+
     # Pont: tram d'estrofa únic cap al final, després d'una tornada, amb acords nous
     for k, (idx, _) in enumerate(trams):
         if tipus[k] != "Estrofa" or "Tornada" not in tipus[:k]:

@@ -29,7 +29,7 @@ def _model(nom: str, perfil: Perfil, compute_type: str):
 
 
 def transcriu(veu: Path, perfil: Perfil, model: str, compute_type: str, idioma: str | None = None,
-              prompt: str | None = None) -> dict:
+              prompt: str | None = None, vad_llindar: float = 0.5) -> dict:
     """Retorna {"idioma", "segments": [{start, end, text}], "paraules": [{start, end, text, conf}]}.
 
     `idioma` None = detecció automàtica (l'idioma de la BD no sempre és fiable).
@@ -38,7 +38,8 @@ def transcriu(veu: Path, perfil: Perfil, model: str, compute_type: str, idioma: 
     senyal, _ = llegeix(veu, sr=16000, mono=True)
     try:
         segments, info = wm.transcribe(
-            senyal, language=idioma, word_timestamps=True, vad_filter=True, beam_size=5,
+            senyal, language=idioma, word_timestamps=True, beam_size=5,
+            vad_filter=True, vad_parameters={"threshold": vad_llindar},
             condition_on_previous_text=False, initial_prompt=prompt,
             # Detecció sobre diversos trossos: els primers 30 s sovint són instrumentals
             language_detection_segments=6,

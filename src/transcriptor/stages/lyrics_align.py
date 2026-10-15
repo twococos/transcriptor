@@ -16,6 +16,7 @@ from ..text import normalitza
 LLINDAR_SIMILITUD = 0.6
 FORAT = -0.5
 BLOC_NO_CANTAT = 4
+MAX_PAS_INTERPOLACIO = 0.4  # segons per subparaula interpolada
 
 
 def _similitud(a: str, b: str) -> float:
@@ -115,8 +116,11 @@ def alinea(linies: list[list[str]], paraules_asr: list[dict], durada: float,
         ant = max((c for c in coneguts if c < k), default=None)
         seg = min((c for c in coneguts if c > k), default=None)
         if ant is not None and seg is not None:
+            # A ritme de parla just després de la paraula coneguda: si el buit és llarg (un tram
+            # instrumental), repartir-les uniformement estiraria la línia i hi cauria tot l'instrumental
             t0, t1 = fi_sub[ant], inici_sub[seg]
-            t = t0 + (t1 - t0) * (k - ant) / (seg - ant)
+            pas = min((t1 - t0) / (seg - ant), MAX_PAS_INTERPOLACIO)
+            t = t0 + pas * (k - ant)
         elif ant is not None:
             t = min(fi_sub[ant] + 0.3 * (k - ant), durada)
         elif seg is not None:
