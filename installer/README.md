@@ -66,6 +66,8 @@ envia el MSI a signar a SignPath.
   polítiques `test-signing` (execució manual del workflow) i `release-signing` (etiquetes `vX.Y.Z`,
   amb aprovació manual).
 - Al repo: secret `SIGNPATH_API_TOKEN` i variable `SIGNPATH_ORGANIZATION_ID`.
+- Mentre no hi hagi la variable, una etiqueta `vX.Y.Z` publica el MSI **sense signar** com a pre-release
+  (`git tag vX.Y.Z && git push origin vX.Y.Z`). La versió de l'etiqueta ha de coincidir amb `pyproject.toml`.
 
 ## Provat (2026-10-15, en aquest PC amb SAC actiu)
 

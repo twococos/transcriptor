@@ -7,7 +7,8 @@
 # Configuració del repo (Settings → Secrets and variables → Actions):
 #   secret   SIGNPATH_API_TOKEN        token de l'usuari CI de SignPath
 #   variable SIGNPATH_ORGANIZATION_ID  id de l'organització a SignPath
-# Sense la variable, el workflow construeix el MSI però no el signa.
+# Sense la variable, el workflow construeix el MSI però no el signa; amb una etiqueta, el publica igualment
+# com a pre-release (sense signar) perquè els col·laboradors el puguin baixar.
 name: Instal·lador
 
 on:
@@ -98,3 +99,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "${{ github.ref_name }}" (Get-ChildItem signat\*.msi).FullName --title "Transcriptor ${{ github.ref_name }}" --generate-notes
+
+      - name: Crea la pre-release sense signar
+        if: env.PUBLICACIO == 'true' && vars.SIGNPATH_ORGANIZATION_ID == ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = "Instal·lador **sense signar** (encara no hi ha signatura de codi). Windows SmartScreen pot avisar-ne: " +
+                   "*Més informació → Executa igualment*. Instruccions: [installer/README.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/installer/README.md)."
+          gh release create "${{ github.ref_name }}" (Get-ChildItem installer\dist\*.msi).FullName `
+            --title "Transcriptor ${{ github.ref_name }}" --prerelease --notes "$notes" --generate-notes
