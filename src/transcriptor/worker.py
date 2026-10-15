@@ -24,7 +24,7 @@ from . import __version__
 from .cache import Cache
 from .config import Config
 from .device import Perfil, detecta
-from .pipeline import Entrada, executa
+from .pipeline import FASES, Entrada, executa
 from .schema import a_compacte
 from .stages.fetch import ErrorDescarrega, id_canco
 
@@ -49,6 +49,10 @@ class EstatWorker:
     fase: str = "aturat"  # aturat | esperant | pausa | processant | sense_connexio
     feina_actual: str | None = None
     inici_feina: float | None = None  # epoch
+    pas_feina: str | None = None  # fase del pipeline ("Separant la veu de l'acompanyament"...)
+    i_pas: int = 0  # 1..n_passos
+    n_passos: int = 0
+    inici_pas: float | None = None  # epoch
     fetes: int = 0
     fallades: int = 0
     temps_mitja_s: float = 0.0
@@ -135,6 +139,12 @@ class Worker:
             except requests.RequestException as e:
                 log.warning("Heartbeat fallit (es reintentarà): %s", e)
 
+    def _en_fase(self, i: int, nom: str) -> None:
+        self.estat.pas_feina, self.estat.i_pas, self.estat.n_passos = nom, i + 1, len(FASES) + 1
+        self.estat.inici_pas = time.time()
+        log.info("Fase %d/%d: %s", i + 1, len(FASES) + 1, nom)
+        self.en_canvi(self.estat)
+
     def processa(self, feina: dict) -> None:
         id_feina = feina["id"]
         self.estat.feina_actual = f"{feina.get('title') or ''} — {feina.get('artist') or ''}".strip(" —")
@@ -150,7 +160,8 @@ class Worker:
             res = executa(Entrada(font=feina["source_url"], titol=feina.get("title"), artista=feina.get("artist"),
                                   idioma=feina.get("language"), text_usuari=feina.get("lyrics_text"),
                                   content_bd=feina.get("song_content")),
-                          self.cfg, self.perfil, cache)
+                          self.cfg, self.perfil, cache, en_fase=self._en_fase)
+            self._en_fase(len(FASES), "Enviant el resultat")
             if perduda.is_set():
                 raise FeinaPerduda(id_feina)
             if self.atura.is_set():
@@ -184,6 +195,7 @@ class Worker:
             cache.esborra_audio()  # no s'emmagatzema àudio de YouTube
             self.estat.feina_actual = None
             self.estat.inici_feina = None
+            self.estat.pas_feina = self.estat.inici_pas = None
             self.estat.historial = self.estat.historial[-50:]
             self.en_canvi(self.estat)
 

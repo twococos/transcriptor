@@ -98,6 +98,11 @@ def _durada(s: float) -> str:
     return f"{s // 3600} h {s % 3600 // 60} min"
 
 
+def _rellotge(s: float) -> str:
+    s = int(s)
+    return f"{s // 60}:{s % 60:02d}"
+
+
 def _data(epoch: float) -> str:
     t = time.localtime(epoch)
     avui = time.localtime()
@@ -402,7 +407,11 @@ class App:
             return "Descarregant els models", f"Pas {d.i} de {d.n}: {d.pas}. Només cal el primer cop."
         if fase == "processant":
             fa = f" · fa {_durada(time.time() - e.inici_feina)}" if e.inici_feina else ""
-            return "Transcrivint una cançó", f"{e.feina_actual or ''}{fa}"
+            detall = f"{e.feina_actual or ''}{fa}"
+            if e.pas_feina:
+                temps = f" · {_rellotge(time.time() - e.inici_pas)}" if e.inici_pas else ""
+                detall += f"\nPas {e.i_pas} de {e.n_passos}: {e.pas_feina}{temps}"
+            return "Transcrivint una cançó", detall
         if fase == "esperant":
             return "Esperant feina", "Ara no hi ha cap cançó a la cua. Ho tornarà a mirar d'aquí a una estona."
         if fase == "pausa":

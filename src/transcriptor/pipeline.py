@@ -11,6 +11,7 @@ import json
 import logging
 import re
 import time
+from typing import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -70,9 +71,28 @@ def _titol_artista(meta: dict, entrada: Entrada) -> tuple[str, str]:
     return titol, artista or meta.get("artist", "")
 
 
+# Fases que veu l'usuari a l'app (en_fase); l'ordre és el de l'execució
+FASES = [
+    "Baixant l'àudio",
+    "Separant la veu de l'acompanyament",
+    "Detectant el ritme i el compàs",
+    "Reconeixent els acords",
+    "Buscant la lletra",
+    "Desxifrant la lletra",
+    "Sincronitzant la lletra amb la música",
+    "Muntant la cançó",
+]
+
+
 def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None = None,
-            cache: Cache | None = None) -> Resultat:
+            cache: Cache | None = None, en_fase: Callable[[int, str], None] | None = None) -> Resultat:
+    """`en_fase(i, nom)` es crida en començar cada fase (índex dins FASES)."""
     cfg = cfg or Config()
+
+    def fase(i: int) -> None:
+        if en_fase:
+            en_fase(i, FASES[i])
+
     perfil = perfil or detecta("auto")
     configura_fils(perfil)
     dir_models = prepara_entorn_models()
@@ -85,6 +105,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     compute_type = cfg.whisper_compute_type or perfil.whisper_compute_type
 
     # 1. Àudio
+    fase(0)
     cami_audio = cache.cami("audio.wav")
     params_fetch = {"font": entrada.font}
     if not cami_audio.exists():
@@ -94,14 +115,17 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     titol, artista = _titol_artista(meta, entrada)
 
     # 2. Separació de la veu
+    fase(1)
     veu = cache.fitxer("separate", "vocals.wav", {"model": separador, "shifts": shifts},
                        lambda desti: separate.separa_veu(cami_audio, desti, perfil, separador, shifts,
                                                          dir_models))
 
     # 3. Ritme
+    fase(2)
     ritme = cache.json("rhythm", {"model": "beat_this-final0"}, lambda: rhythm.detecta(cami_audio, perfil))
 
     # 4. Acords (probabilitats per trama)
+    fase(3)
     def _calcula_acords(desti: Path) -> None:
         probs, per_trama = chords.probabilitats(cami_audio, perfil, dir_models)
         with open(desti, "wb") as f:
@@ -112,6 +136,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     probs, per_trama = dades["probs"], float(dades["per_trama"])
 
     # 5. Text de la lletra
+    fase(4)
     font_lletra = cache.json(
         "lyrics_source",
         {"titol": titol, "artista": artista, "usuari": _hash(entrada.text_usuari),
@@ -121,6 +146,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     )
 
     # 6. ASR (sempre: dona els temps també quan tenim el text)
+    fase(5)
     # Idioma: explícit > deduït del text conegut > detecció de Whisper (de vegades falla: "Esperança"
     # es va detectar com a anglès perquè l'inici és instrumental)
     idioma_asr = entrada.idioma or (detecta_idioma(font_lletra["text"]) if font_lletra["text"] else None)
@@ -133,6 +159,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     idioma = idioma_asr or asr.get("idioma") or "ca"
 
     # 7. Postprocés de ritme i acords
+    fase(6)
     t0 = time.perf_counter()
     etiquetes, col_lapse = chords_clean.vocabulari(cfg.acords_vocabulari)
     vores = chords_clean.unitats(ritme["pulsacions"], durada)
@@ -177,6 +204,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
         font_lletra["font"] = "whisper"
 
     # 9. Fusió, estructura i render
+    fase(7)
     elements = merge.colloca(paraules, rangs, segs, compas["beats"], durada)
     durada_compas = merge._durada_compas(compas["beats"])
     seccions = structure.detecta(elements, durada, durada_compas)
