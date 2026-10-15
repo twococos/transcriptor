@@ -103,9 +103,14 @@ def _to_sonant(clau: str, capo: int) -> tuple[int, str] | None:
     return (arrel + capo) % 12, "min" if sufix.startswith("m") else "maj"
 
 
-def tonalitat(ref_clau: str, ref_capo: int, pred_tonic: str | None, pred_mode: str | None) -> str:
-    """exacte | relatiu | quinta | paral·lel | altre (comparant to sonant)."""
-    ref = _to_sonant(ref_clau, ref_capo or 0)
+def tonalitat(ref_clau: str, transport: int, pred_tonic: str | None, pred_mode: str | None) -> str:
+    """exacte | relatiu | quinta | paral·lel | altre.
+
+    Compara en "formes": el to de la BD (tal com està escrit) desplaçat pel transport detectat a
+    la seqüència d'acords, contra el to predit menys la cejilla suggerida. Així una gravació en un to
+    diferent del de la BD no compta com a error de tonalitat.
+    """
+    ref = _to_sonant(ref_clau, transport)
     if ref is None or pred_tonic is None:
         return "sense"
     pred = (NOTES.index(nota(pred_tonic)), "min" if pred_mode == "minor" else "maj")
@@ -119,6 +124,19 @@ def tonalitat(ref_clau: str, ref_capo: int, pred_tonic: str | None, pred_mode: s
     if ra == pa:
         return "paral·lel"
     return "altre"
+
+
+def tonalitat_acords_bd(ref_content: str, transport: int, pred_tonic: str | None,
+                        pred_mode: str | None) -> str:
+    """Com `tonalitat`, però la referència és el to estimat dels acords de la BD (durada uniforme)."""
+    from ..postprocess.key import clau, estima
+
+    acords = [{"start": i, "end": i + 1, "label": a} for i, a in enumerate(_RE_CH.findall(ref_content))
+              if majmin(a)]
+    to_ref = estima(acords)
+    if to_ref is None:
+        return "sense"
+    return tonalitat(clau(to_ref), transport, pred_tonic, pred_mode)
 
 
 def wer_lletra(ref_content: str, text_asr: str) -> float:

@@ -21,6 +21,7 @@ import numpy as np
 from ..cache import Cache
 from ..config import Config
 from ..device import detecta
+from ..notation import transposa
 from ..pipeline import Entrada, executa
 from ..stages.fetch import id_canco
 from . import metrics
@@ -47,9 +48,13 @@ def avalua(canco: dict, content: str, analisi) -> dict:
     fila.update(ac)
     fila["to_ref"] = f"{canco['key']}+{canco['capo'] or 0}"
     fila["to_pred"] = analisi.key.clau if analisi.key else ""
-    fila["to"] = metrics.tonalitat(canco["key"], canco["capo"] or 0,
-                                   analisi.key.tonic if analisi.key else None,
+    tonic_formes = transposa(analisi.key.tonic, -analisi.capo_suggerit) if analisi.key else None
+    fila["to"] = metrics.tonalitat(canco["key"], ac["transport"], tonic_formes,
                                    analisi.key.mode if analisi.key else None)
+    # El `key` de la BD sovint és l'arrel del primer acord (importadors): comparem també amb el to
+    # estimat a partir dels acords escrits a la BD
+    fila["to_acords_bd"] = metrics.tonalitat_acords_bd(ref, ac["transport"], tonic_formes,
+                                                       analisi.key.mode if analisi.key else None)
     fila.update(metrics.collocacio(ref, content, ac["transport"]))
     fila.update(metrics.estructura(ref, content))
     fila["compas"] = f"{analisi.tempo.time_signature[0]}/{analisi.tempo.time_signature[1]}"
@@ -142,7 +147,8 @@ def resum(files: list[dict]) -> str:
             f"| Col·locació (mateixa paraula) | {_mitjana(grup, 'collocacio')} |",
             f"| Estructura (tipus de secció per línia) | {_mitjana(grup, 'estructura')} |",
             f"| WER de l'ASR (orientatiu) | {np.mean([f['wer'] for f in grup if 'wer' in f]):.3f} |",
-            f"| To | {', '.join(f'{k}: {v}' for k, v in sorted(tons.items(), key=lambda x: -x[1]))} |",
+            f"| To (vs `key` de la BD) | {', '.join(f'{k}: {v}' for k, v in sorted(tons.items(), key=lambda x: -x[1]))} |",
+            f"| To (vs to dels acords de la BD) | {sum(f.get('to_acords_bd') == 'exacte' for f in grup)}/{len(grup)} exacte |",
             f"| Temps mitjà per cançó | {np.mean([f['temps_s'] for f in grup]):.0f} s |",
             "",
         ]

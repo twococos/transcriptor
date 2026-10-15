@@ -63,8 +63,9 @@ def probabilitats_per_unitat(probs: np.ndarray, per_trama: float, vores: np.ndar
     return sortida
 
 
-def viterbi(p_unitat: np.ndarray, inici_compas: np.ndarray, penalitzacio: float = PENALITZACIO_CANVI) -> np.ndarray:
+def viterbi(p_unitat: np.ndarray, inici_compas: np.ndarray, penalitzacio: float | None = None) -> np.ndarray:
     """Seqüència d'etiquetes (índexs) que maximitza Σ log p − penalització·canvis."""
+    penalitzacio = PENALITZACIO_CANVI if penalitzacio is None else penalitzacio
     logp = np.log(p_unitat + 1e-6)
     n, k = logp.shape
     punts = logp[0].copy()

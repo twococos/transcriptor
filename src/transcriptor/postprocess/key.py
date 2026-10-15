@@ -40,8 +40,46 @@ def histograma(acords: list[dict]) -> np.ndarray:
     return hist
 
 
+METODE = "krumhansl"  # "krumhansl" | "funcional" (al benchmark, Krumhansl discrepa menys)
+
+# Pes de cada grau diatònic (interval des de la tònica, menor?) per a l'estimador funcional
+_GRAUS_MAJOR = {(0, False): 1.0, (5, False): 0.8, (7, False): 0.8, (9, True): 0.6, (2, True): 0.5,
+                (4, True): 0.3, (10, False): 0.2}  # bVII: habitual en pop/rock
+_GRAUS_MENOR = {(0, True): 1.0, (5, True): 0.8, (7, False): 0.7, (7, True): 0.5, (3, False): 0.6,
+                (8, False): 0.6, (10, False): 0.6}
+BONUS_EXTREMS = 0.15  # fracció de la durada total si el primer/últim acord és la tònica
+BONUS_CADENCIA = 0.02  # per cada V→I, en fracció de la durada total
+
+
+def _estima_funcional(acords: list[dict]) -> dict | None:
+    seq = []
+    for a in acords:
+        r = arrel_i_sufix(a["label"])
+        if r:
+            seq.append((r[0], es_menor(r[1]) or r[1].startswith("dim"), a["end"] - a["start"]))
+    if not seq:
+        return None
+    total = sum(d for _, _, d in seq)
+    resultats = []
+    for t in range(12):
+        for menor, graus in ((False, _GRAUS_MAJOR), (True, _GRAUS_MENOR)):
+            p = sum(d * graus.get(((r - t) % 12, m), -0.3) for r, m, d in seq)
+            for extrem in (seq[0], seq[-1]):
+                if (extrem[0] - t) % 12 == 0 and extrem[1] == menor:
+                    p += BONUS_EXTREMS * total
+            p += BONUS_CADENCIA * total * sum(
+                1 for (r1, _, _), (r2, m2, _) in zip(seq, seq[1:])
+                if (r1 - t) % 12 == 7 and (r2 - t) % 12 == 0 and m2 == menor)
+            resultats.append((p / total, NOTES[t], "minor" if menor else "major"))
+    resultats.sort(reverse=True)
+    p, tonic, mode = resultats[0]
+    return {"tonic": tonic, "mode": mode, "confidence": round(max(min(p, 1.0), 0.0), 3)}
+
+
 def estima(acords: list[dict]) -> dict | None:
     """Retorna {"tonic", "mode", "confidence"} o None si no hi ha acords."""
+    if METODE == "funcional":
+        return _estima_funcional(acords)
     hist = histograma(acords)
     if hist.sum() == 0:
         return None

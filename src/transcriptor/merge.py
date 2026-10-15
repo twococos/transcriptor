@@ -21,7 +21,8 @@ import numpy as np
 
 COMPASSOS_MIN_INSTRUMENTAL = 1.5  # un buit sense veu més llarg que això és instrumental
 MARGE_REPETICIO_INICI = 2  # lletres: un canvi d'acord tan a prop de l'inici es mou a la posició 0
-PENALITZACIO_POSTERIOR = 1.5  # cost relatiu de posar l'acord en una paraula que comença després del canvi
+PENALITZACIO_POSTERIOR = 2.5  # cost relatiu de posar l'acord en una paraula que comença després del canvi
+AVANC_ACORD_S = 0.1  # s: es tria la paraula com si l'acord canviés aquest temps abans
 
 
 def _durada_compas(beats: list[dict]) -> float:
@@ -52,6 +53,7 @@ def _posicio(paraules: list[dict], rang: tuple[int, int], t: float, tol: float) 
         d = t - paraules[k]["start"]
         return d if d >= 0 else -d * PENALITZACIO_POSTERIOR
 
+    t = t - AVANC_ACORD_S
     k = min(range(inici, fi), key=cost)
     w = paraules[k]
     durada = max(w["end"] - w["start"], 1e-3)
