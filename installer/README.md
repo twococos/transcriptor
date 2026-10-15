@@ -25,14 +25,21 @@ a `%APPDATA%\Transcriptor`. El token es desa xifrat amb DPAPI (només el pot lle
 ## Provat
 
 - `bootstrap.ps1` en un directori temporal net d'aquest PC: tria CPU, instal·la en 1 min (amb la
-  cache d'uv plena) i `import transcriptor.app` funciona. **No** s'ha compilat l'instal·lador
-  (Inno Setup no és instal·lat) ni s'ha provat en un Windows net sense Python.
+  cache d'uv plena) i `import transcriptor.app` funciona.
+- L'instal·lador compila (Inno Setup 6.7.3, 12 MB, 10 s), però **Smart App Control el bloqueja** en
+  aquest PC: no deixa carregar el `.tmp` sense signar que Inno Setup extreu (registre
+  CodeIntegrity, esdeveniment 3077). Amb SAC actiu no hi ha opció "Executa igualment", així que sense
+  signatura l'instal·lador no serveix a qui tingui SAC activat (ve activat per defecte en instal·lacions
+  noves de Windows 11). No s'ha provat en un Windows net.
 - L'app contra un servidor simulat (`proves/prova_app.py`): demana feina, la processa i envia el
   resultat. La finestra no s'ha pogut veure perquè la sessió estava bloquejada.
 
 ## Pendent
 
-- Signatura de codi: sense certificat, SmartScreen mostra l'avís "Executa igualment". A més, Smart App
-  Control pot bloquejar DLL sense signar de tercers (ctranslate2) la primera vegada: vegeu docs/proves.md.
+- **Signatura de codi** (imprescindible per a SAC): Azure Trusted Signing (~10 $/mes) o SignPath
+  (gratuït per a projectes de codi obert). Alternativa sense signar: instal·lar només amb
+  `bootstrap.ps1` (PowerShell, uv i Python ja estan signats o tenen reputació, i aquí funcionen amb SAC
+  actiu). A més, SAC pot bloquejar DLL sense signar de tercers (ctranslate2) la primera vegada: vegeu
+  docs/proves.md.
 - Autoactualització quan l'API respongui 426: cal decidir d'on es baixa la versió nova (Fase 6).
 - Validació CUDA en una GPU llogada.
