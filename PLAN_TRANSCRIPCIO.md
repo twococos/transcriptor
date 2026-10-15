@@ -223,7 +223,7 @@ Decisions a l'inici del document. Protocol complet a `docs/api_worker.md`.
 **Pendent per tancar la fase**: fusionar la branca i desplegar; crear un worker a l'admin de producció i processar-hi 5 cançons reals des del PC.
 
 ### Fase 7 — App de Windows per a col·laboradors
-- **Instal·lador petit** (Inno Setup, unes desenes de MB) amb `uv` i ffmpeg portable. Al primer arrencament: detecta si hi ha GPU NVIDIA, instal·la PyTorch CPU o CUDA amb `uv` (0,5-2,5 GB) i descarrega els models (~3-5 GB) un sol cop. Una sola versió de l'instal·lable, sense necessitat de Python previ.
+- **Instal·lador petit** (MSI amb WiX, ~31 MB, amb `uv` i Python oficial signat: l’Inno Setup el bloqueja Smart App Control, vegeu installer/README.md). Al primer arrencament: detecta si hi ha GPU NVIDIA, instal·la PyTorch CPU o CUDA amb `uv` (0,5-2,5 GB) i descarrega els models (~3-5 GB) un sol cop. Una sola versió de l'instal·lable, sense necessitat de Python previ.
 - **App a la barra de tasques** (PySide6 o UI web local): enganxar el token, interruptor activar/desactivar, "només quan l'ordinador estigui inactiu", límit de nuclis, arrencar amb Windows, estat (cançó actual, fetes, temps mitjà).
 - **Actualitzacions**: autoactualització quan l'API demana una versió mínima més nova; `yt-dlp` s'actualitza sol (YouTube canvia sovint).
 - Sense certificat de signatura de codi apareix l'avís de SmartScreen ("Executa igualment"). Acceptable per a amics; signar-lo costa ~100-300 €/any.

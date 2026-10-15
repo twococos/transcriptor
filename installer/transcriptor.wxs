@@ -1,0 +1,85 @@
+<!--
+  Instal·lador MSI del Transcriptor (WiX). Substitueix l'Inno Setup: el seu .tmp intern no es pot
+  signar i Smart App Control el bloqueja. Un MSI l'executa msiexec (signat per Microsoft) i no porta
+  cap executable propi: uv.exe (signat), Python oficial (signat per la PSF) i el codi font. L'únic
+  binari de WiX és la DLL de WixQuietExec, signada per FireGiant.
+
+  Per usuari, sense permisos d'administrador, a %LOCALAPPDATA%\Programs\Transcriptor.
+  Construir: installer/construeix.ps1 (prepara el directori $(Stage) amb git archive i crida wix).
+  Dispositiu: msiexec /i Transcriptor.msi DISPOSITIU=cpu (per defecte auto).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Transcriptor"
+           Manufacturer="El Cançoner (guitarreo.cat)"
+           Version="$(Versio)"
+           UpgradeCode="6B0C5E1F-6E7A-4B8E-9C37-7A1B2D9C4E51"
+           Scope="perUser"
+           Language="1027"
+           Codepage="1252">
+    <MajorUpgrade DowngradeErrorMessage="Ja hi ha instal·lada una versió més nova del Transcriptor." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="transcriptor.ico" SourceFile="$(Stage)\transcriptor.ico" />
+    <Property Id="ARPPRODUCTICON" Value="transcriptor.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://guitarreo.cat" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="DISPOSITIU" Value="auto" Secure="yes" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsDir" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="Transcriptor">
+          <Directory Id="SrcDir" Name="src" />
+          <Directory Id="PythonDir" Name="python" />
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <ComponentGroup Id="Fitxers" Directory="INSTALLFOLDER">
+      <File Source="$(Stage)\uv.exe" />
+      <File Source="$(Stage)\bootstrap.ps1" />
+      <File Source="$(Stage)\transcriptor.ico" />
+      <File Source="$(Stage)\pyproject.toml" />
+      <File Source="$(Stage)\uv.lock" />
+      <File Source="$(Stage)\README.md" />
+      <File Source="$(Stage)\LICENSE" />
+      <Component Id="Carpetes">
+        <RegistryValue Root="HKCU" Key="Software\Transcriptor" Name="instal·lat" Type="integer" Value="1" KeyPath="yes" />
+        <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
+        <RemoveFolder Id="RemoveSrcDir" Directory="SrcDir" On="uninstall" />
+        <RemoveFolder Id="RemovePythonDir" Directory="PythonDir" On="uninstall" />
+      </Component>
+      <Files Directory="SrcDir" Include="$(Stage)\src\**" />
+      <!-- Python 3.11 oficial (NuGet de python.org + tcl/tk), signat per la Python Software Foundation -->
+      <Files Directory="PythonDir" Include="$(Stage)\python\**" />
+      <Component Id="AccesMenu">
+        <Shortcut Id="AccesMenuInici" Directory="ProgramMenuFolder" Name="Transcriptor"
+                  Target="[INSTALLFOLDER].venv\Scripts\pythonw.exe" Arguments="-m transcriptor.app"
+                  WorkingDirectory="INSTALLFOLDER" Icon="transcriptor.ico" />
+        <RegistryValue Root="HKCU" Key="Software\Transcriptor" Name="accés" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Principal">
+      <ComponentGroupRef Id="Fitxers" />
+    </Feature>
+
+    <!-- Instal·la les dependències amb uv sobre el Python inclòs (1-5 min). "[INSTALLFOLDER]." evita que la barra final
+         escapi les cometes. -->
+    <SetProperty Id="Bootstrap" Before="Bootstrap" Sequence="execute"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File &quot;[INSTALLFOLDER]bootstrap.ps1&quot; -Dir &quot;[INSTALLFOLDER].&quot; -Dispositiu [DISPOSITIU]" />
+    <CustomAction Id="Bootstrap" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec"
+                  Execute="deferred" Impersonate="yes" Return="check" />
+
+    <!-- En desinstal·lar (no en actualitzar): fora l'entorn i el Python que ha creat el bootstrap -->
+    <SetProperty Id="Neteja" Before="Neteja" Sequence="execute"
+                 Value="&quot;[System64Folder]cmd.exe&quot; /c rmdir /s /q &quot;[INSTALLFOLDER].venv&quot; &amp; rmdir /s /q &quot;[INSTALLFOLDER]python&quot; &amp; del /q &quot;[INSTALLFOLDER]instal-lacio.log&quot;" />
+    <CustomAction Id="Neteja" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec"
+                  Execute="deferred" Impersonate="yes" Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="Bootstrap" After="InstallFiles" Condition="NOT REMOVE~=&quot;ALL&quot;" />
+      <Custom Action="Neteja" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>

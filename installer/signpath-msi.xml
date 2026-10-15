@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Configuració d'artefacte de SignPath (slug "msi" al projecte "transcriptor").
+  No es llegeix des d'aquí: s'enganxa a SignPath → Project → Artifact configurations.
+
+  L'artefacte de GitHub és un zip amb un sol MSI. Dins el MSI no cal signar res més: uv.exe (OpenAI),
+  el Python (Python Software Foundation) i la DLL de WiX (FireGiant) ja vénen signats pels autors.
+  "subject" i "author" són les restriccions de metadades que SignPath admet per als MSI (WiX hi posa
+  el Name i el Manufacturer del Package).
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <msi-file path="Transcriptor-*.msi" subject="Transcriptor" author="El Cançoner (guitarreo.cat)">
+      <authenticode-sign />
+    </msi-file>
+  </zip-file>
+</artifact-configuration>

@@ -1,0 +1,100 @@
+# Construeix l'instal·lador MSI de Windows i el fa signar amb SignPath.
+#
+# - Execució manual (workflow_dispatch): MSI signat amb la política de prova (test-signing).
+# - Etiqueta vX.Y.Z: MSI signat amb la política de publicació (release-signing, cal aprovar-la a
+#   SignPath) i release de GitHub amb el MSI adjunt.
+#
+# Configuració del repo (Settings → Secrets and variables → Actions):
+#   secret   SIGNPATH_API_TOKEN        token de l'usuari CI de SignPath
+#   variable SIGNPATH_ORGANIZATION_ID  id de l'organització a SignPath
+# Sense la variable, el workflow construeix el MSI però no el signa.
+name: Instal·lador
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write  # crear la release
+  actions: read    # SignPath baixa l'artefacte
+
+jobs:
+  msi:
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      PUBLICACIO: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          version: "0.13.1"
+
+      - name: Comprova que l'etiqueta coincideix amb la versió
+        if: env.PUBLICACIO == 'true'
+        shell: pwsh
+        run: |
+          $versio = (Select-String -Path pyproject.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          if ("v$versio" -ne "${{ github.ref_name }}") { throw "Etiqueta ${{ github.ref_name }} però pyproject.toml diu $versio" }
+
+      - name: Instal·la WiX 6
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 6.0.2
+          wix extension add -g WixToolset.Util.wixext/6.0.2
+
+      - name: Construeix el MSI
+        shell: pwsh
+        run: ./installer/construeix.ps1 -Uv (Get-Command uv).Source
+
+      - name: Puja el MSI sense signar
+        id: sense-signar
+        uses: actions/upload-artifact@v7
+        with:
+          name: msi-sense-signar
+          path: installer/dist/*.msi
+          if-no-files-found: error
+
+      - name: Signa amb SignPath
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: transcriptor
+          signing-policy-slug: ${{ env.PUBLICACIO == 'true' && 'release-signing' || 'test-signing' }}
+          artifact-configuration-slug: msi
+          github-artifact-id: ${{ steps.sense-signar.outputs.artifact-id }}
+          wait-for-completion: true
+          # La política de publicació espera l'aprovació manual a SignPath
+          wait-for-completion-timeout-in-seconds: 7200
+          output-artifact-directory: signat
+
+      - name: Comprova la signatura
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        shell: pwsh
+        run: |
+          Get-ChildItem signat\*.msi | ForEach-Object {
+            $s = Get-AuthenticodeSignature $_.FullName
+            Write-Host "$($_.Name): $($s.Status) - $($s.SignerCertificate.Subject)"
+            # Amb test-signing el certificat no és de confiança (NotTrusted/UnknownError), però hi ha d'haver signatura
+            if (-not $s.SignerCertificate) { throw "$($_.Name) no està signat" }
+          }
+
+      - name: Puja el MSI signat
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: msi-signat
+          path: signat/*.msi
+          if-no-files-found: error
+
+      - name: Crea la release
+        if: env.PUBLICACIO == 'true' && vars.SIGNPATH_ORGANIZATION_ID != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" (Get-ChildItem signat\*.msi).FullName --title "Transcriptor ${{ github.ref_name }}" --generate-notes

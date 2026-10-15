@@ -1,10 +1,10 @@
-<#
+﻿<#
   Prepara l'entorn del Transcriptor dins el directori d'instal·lació (l'executa l'instal·lador).
 
   - Detecta si hi ha una GPU NVIDIA i tria PyTorch CUDA (cu126) o CPU.
-  - Baixa Python 3.11 oficial (signat, perquè Smart App Control el deixi executar) i, amb l'uv.exe
-    que porta l'instal·lador, totes les dependències (0,5-2,5 GB segons CPU/GPU). No cal tenir Python
-    instal·lat ni compilar res.
+  - Fa servir el Python oficial de `python\` (signat, perquè Smart App Control el deixi executar). El
+    MSI ja l'inclou; si s'executa sol i no hi és, el baixa. Amb l'uv.exe que porta l'instal·lador,
+    instal·la totes les dependències (0,5-2,5 GB segons CPU/GPU). No cal compilar res.
   - Els models (~2 GB) es baixen el primer cop que s'activa el worker, amb progrés a l'app.
 
   Ús: powershell -ExecutionPolicy Bypass -File bootstrap.ps1 -Dir "C:\...\Transcriptor" [-Dispositiu auto|cpu|cuda]
@@ -17,6 +17,9 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"  # sense la barra, Invoke-WebRequest és molt més ràpid
 $UrlPython = "https://www.nuget.org/api/v2/package/python/3.11.9"
 $HashPython = "9283876D58C017E0E846F95B490DA3BCA0FC0A6EE1134B2870677CFB7EEC3C67"
+# El paquet NuGet no porta tkinter (la finestra de l'app): l'afegim del tcltk.msi de la mateixa versió
+$UrlTclTk = "https://www.python.org/ftp/python/3.11.9/amd64/tcltk.msi"
+$HashTclTk = "C8845743FB77ABEC0F01FAA823BF3300E2113EF344758FC36360FEE3DD71A8A8"
 Set-Location $Dir
 $log = Join-Path $Dir "instal-lacio.log"
 Start-Transcript -Path $log -Append | Out-Null
@@ -58,6 +61,19 @@ if (-not (Test-Path $python)) {
     Move-Item (Join-Path $tmp "tools") (Join-Path $Dir "python")
     Remove-Item -Recurse -Force $tmp, $zip
 }
+if (-not (Test-Path (Join-Path $Dir "python\DLLs\_tkinter.pyd"))) {
+    $msi = Join-Path $env:TEMP "python-3.11.9-tcltk.msi"
+    Write-Host "Baixant tcl/tk (python.org)..."
+    Invoke-WebRequest -UseBasicParsing -Uri $UrlTclTk -OutFile $msi
+    if ((Get-FileHash $msi -Algorithm SHA256).Hash -ne $HashTclTk) { throw "El paquet tcl/tk no té el hash esperat" }
+    # Instal·lació administrativa: només desempaqueta (DLLs, Lib\tkinter, tcl), no registra res
+    $tmp = Join-Path $env:TEMP "python-3.11.9-tcltk"
+    if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
+    $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/a `"$msi`" /qn TARGETDIR=`"$tmp`""
+    if ($p.ExitCode -ne 0) { throw "No s'ha pogut desempaquetar tcl/tk (msiexec $($p.ExitCode))" }
+    foreach ($c in "DLLs", "Lib", "tcl") { Copy-Item -Recurse -Force (Join-Path $tmp $c) (Join-Path $Dir "python") }
+    Remove-Item -Recurse -Force $tmp, $msi
+}
 
 # Tot dins el directori d'instal·lació
 $env:UV_PROJECT_ENVIRONMENT = Join-Path $Dir ".venv"
@@ -72,6 +88,6 @@ if ($LASTEXITCODE -ne 0 -and $Dispositiu -eq "cuda") {
 if ($LASTEXITCODE -ne 0) { Stop-Transcript | Out-Null; exit $LASTEXITCODE }
 
 # Comprovació ràpida
-& (Join-Path $Dir ".venv\Scripts\python.exe") -c "import transcriptor, torch; print('Transcriptor', transcriptor.__version__, '- torch', torch.__version__, '- CUDA', torch.cuda.is_available())"
+& (Join-Path $Dir ".venv\Scripts\python.exe") -c "import transcriptor, tkinter, torch; print('Transcriptor', transcriptor.__version__, '- torch', torch.__version__, '- CUDA', torch.cuda.is_available())"
 Stop-Transcript | Out-Null
 exit $LASTEXITCODE

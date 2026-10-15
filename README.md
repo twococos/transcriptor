@@ -83,3 +83,26 @@ Cada etapa cara es desa a `work/cache/<id>/`: canviar el postprocés i tornar a 
 ```bash
 uv run --no-sync pytest
 ```
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+L'instal·lador de Windows (`Transcriptor-<versió>.msi`) es construeix a GitHub Actions a partir
+d'aquest repositori ([instal-lador.yml](.github/workflows/instal-lador.yml)) i el signa SignPath.
+
+- Autors, revisors i aprovadors: [@twococos](https://github.com/twococos).
+- Cada publicació signada l'aprova manualment un aprovador.
+
+### Privacitat
+
+El Transcriptor no envia cap informació a cap sistema de la xarxa si l'usuari no ho demana:
+
+- Baixa l'àudio de l'URL que se li indica (YouTube, amb yt-dlp), la lletra de [LRCLIB](https://lrclib.net)
+  i, el primer cop, els models (Hugging Face, GitHub).
+- El worker i l'app d'escriptori només es connecten al servidor d'El Cançoner que l'usuari configura
+  (per defecte `https://guitarreo.cat`) i amb el token que l'usuari hi introdueix. Hi envien el
+  resultat de les feines, la versió del Transcriptor, el nom de l'ordinador i el dispositiu de
+  càlcul (CPU o el model i la memòria de la GPU). Sense token
+  configurat, no s'hi connecten.

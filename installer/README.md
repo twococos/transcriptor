@@ -1,54 +1,76 @@
 # Instal·lador de Windows (Fase 7)
 
-Instal·lador petit (uns 30 MB: `uv.exe` + el codi) per a col·laboradors. No cal tenir Python ni
-permisos d'administrador. En instal·lar:
+Instal·lador MSI (~31 MB) per a col·laboradors. No cal tenir Python ni permisos d'administrador.
+En instal·lar:
 
-1. Copia `uv.exe`, el codi (`src/`), `pyproject.toml` i `uv.lock` a `%LOCALAPPDATA%\Programs\Transcriptor`.
-2. Executa `bootstrap.ps1`, que:
+1. Copia a `%LOCALAPPDATA%\Programs\Transcriptor`: el codi (`src/`), `pyproject.toml`, `uv.lock`,
+   `uv.exe` i un **Python 3.11 oficial** (paquet NuGet de python.org + tcl/tk per a tkinter).
+2. Executa `bootstrap.ps1` (amb el PowerShell del sistema, sense finestra), que:
    - mira si hi ha una GPU NVIDIA **útil** (`nvidia-smi`: compute capability ≥ 6.0 i ≥ 4 GB). Si el driver
      és massa antic per saber-ho (com la GTX 750 Ti del PC de proves), tria CPU;
-   - fa `uv sync --frozen --extra cpu|cuda --extra app`. Baixa Python 3.11 i les dependències:
-     ~1,3 GB en CPU, ~3,5 GB en CUDA. Si CUDA falla, torna a provar amb CPU.
-3. Crea l'accés al menú Inici (i, si es marca, a l'arrencada de Windows) que obre
-   `pythonw -m transcriptor.app`.
+   - fa `uv sync --frozen --extra cpu|cuda --extra app` sobre aquell Python: ~1,3 GB en CPU, ~3,5 GB
+     en CUDA. Si CUDA falla, torna a provar amb CPU. Registre a `instal-lacio.log`.
+3. Crea l'accés al menú Inici que obre `pythonw -m transcriptor.app`. L'arrencada amb Windows
+   s'activa des de l'app.
+
+Forçar el dispositiu: `msiexec /i Transcriptor-<versió>.msi DISPOSITIU=cpu`.
+En desinstal·lar s'esborren també el `.venv` i el Python (en actualitzar, no).
 
 Els models (~2 GB) es baixen el primer cop que s'activa el worker, i l'app en mostra el progrés.
 Les dades (models, cache) van a `%LOCALAPPDATA%\Transcriptor\dades`; la configuració i el registre
 a `%APPDATA%\Transcriptor`. El token es desa xifrat amb DPAPI (només el pot llegir aquell usuari de Windows).
 
+## Per què MSI i Python oficial: Smart App Control
+
+Smart App Control (SAC, actiu per defecte en instal·lacions noves de Windows 11) bloqueja els
+executables i DLL sense signar que no té per coneguts, i no ofereix "Executa igualment".
+
+- **Python**: el de python-build-standalone (el que baixa uv) no està signat. El 2026-10-15 SAC el va
+  començar a bloquejar en aquest PC, tot i que la nit abans funcionava (decideix per reputació al
+  núvol). El Python de python.org està signat per la Python Software Foundation.
+- **Inno Setup**: el primer instal·lador era d'Inno Setup, però en executar-se extreu el seu motor
+  (`Setup.e32`, sense signar) com a `.tmp`, i SAC el bloqueja. Signar l'`.exe` exterior no ho
+  arregla, perquè l'Inno no passa `Setup.e32` pel SignTool; altres instal·ladors Inno signats tenen el
+  mateix problema.
+- **MSI**: l'executa `msiexec` (de Microsoft) i no porta cap executable propi. Tots els binaris de
+  dins ja vénen signats: `uv.exe` (OpenAI), Python (PSF) i la DLL de `WixQuietExec` (FireGiant). Només
+  cal signar el `.msi` (SignPath, vegeu més avall).
+
 ## Construir-lo
 
-1. Instal·lar [Inno Setup 6](https://jrsoftware.org/isinfo.php) (amb l'idioma català).
-2. Copiar `uv.exe` (de `%USERPROFILE%\.local\bin\uv.exe` o de les releases d'uv) a aquest directori.
-3. `iscc installer\transcriptor.iss` → `installer\dist\Transcriptor-<versió>-instal-lador.exe`.
+Requisits: .NET SDK 8 i WiX 6 (`dotnet tool install --global wix --version 6.0.2` i
+`wix extension add -g WixToolset.Util.wixext/6.0.2`), `uv` al PATH i un fitxer `LICENSE` a l'arrel.
 
-## Provat
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\construeix.ps1
+# → installer\dist\Transcriptor-<versió>.msi
+```
 
-- `bootstrap.ps1` en un directori temporal net d'aquest PC: tria CPU, instal·la en 1 min (amb la
-  cache d'uv plena) i `import transcriptor.app` funciona.
-- L'instal·lador compila (Inno Setup 6.7.3, 12 MB, 10 s), però **Smart App Control el bloqueja** en
-  aquest PC: no deixa carregar el `.tmp` sense signar que Inno Setup extreu (registre
-  CodeIntegrity, esdeveniment 3077). Amb SAC actiu no hi ha opció "Executa igualment", així que sense
-  signatura l'instal·lador no serveix a qui tingui SAC activat (ve activat per defecte en instal·lacions
-  noves de Windows 11). No s'ha provat en un Windows net.
-- L'app contra un servidor simulat (`proves/prova_app.py`): demana feina, la processa i envia el
-  resultat. La finestra no s'ha pogut veure perquè la sessió estava bloquejada.
+`construeix.ps1` copia només els fitxers versionats (`git ls-files`) a `installer\build\stage`, hi
+afegeix uv i el Python (baixats amb el hash fixat, en cache a `installer\build\cache`) i crida `wix`.
+El workflow [instal-lador.yml](../.github/workflows/instal-lador.yml) fa el mateix a GitHub Actions i
+envia el MSI a signar a SignPath.
+
+## Signatura amb SignPath
+
+- Projecte `transcriptor`, configuració d'artefacte `msi` ([signpath-msi.xml](signpath-msi.xml)),
+  polítiques `test-signing` (execució manual del workflow) i `release-signing` (etiquetes `vX.Y.Z`,
+  amb aprovació manual).
+- Al repo: secret `SIGNPATH_API_TOKEN` i variable `SIGNPATH_ORGANIZATION_ID`.
+
+## Provat (2026-10-15, en aquest PC amb SAC actiu)
+
+- MSI sense signar: `msiexec /i` per usuari en 66 s (cache d'uv plena), `tkinter`, `torch` i
+  `transcriptor.app` funcionen, l'app arrenca i **cap bloqueig de SAC** dins la instal·lació.
+  `msiexec /x` ho deixa tot net (carpeta, accés al menú, registre).
+- Passada completa del pipeline (Demucs, Beat This!, BTC, Whisper) amb el Python oficial sense cap bloqueig.
+- Worker real contra el canconer en mode producció (`next start`, branca `transcripcio`, còpia de la
+  BD): una feina `new` i una `analyze`, totes dues `done`.
+- **No provat**: la finestra de l'app (sessió bloquejada), un Windows net, el MSI ja signat, CUDA.
 
 ## Pendent
 
-- **Signatura de codi** (imprescindible per a SAC): Azure Trusted Signing (~10 $/mes) o SignPath
-  (gratuït per a projectes de codi obert). Alternativa sense signar: instal·lar només amb
-  `bootstrap.ps1`. A més, SAC pot bloquejar DLL sense signar de tercers (ctranslate2) la primera
-  vegada: vegeu docs/proves.md.
-
-## Smart App Control i Python
-
-El 2026-10-15 SAC va començar a bloquejar el `python.exe` de python-build-standalone (el que baixa
-uv), que la nit abans funcionava: SAC decideix per reputació al núvol i pot canviar d'opinió. Signar
-l'instal·lador no ho resoldria, perquè el bloqueig és del Python. Per això `bootstrap.ps1` baixa el
-**paquet NuGet oficial de python.org** (`python` 3.11.9, 17 MB, hash fixat): és un zip sense
-instal·lador, amb `python.exe`, `pythonw.exe` i les DLL signats per la Python Software Foundation, i
-el `.venv` que en fa uv copia aquests executables signats. Provat: bootstrap en directori net en 86 s
-i passada completa del pipeline (Demucs, Beat This!, BTC, Whisper) sense cap bloqueig.
-- Autoactualització quan l'API respongui 426: cal decidir d'on es baixa la versió nova (Fase 6).
+- Autoactualització quan l'API respongui 426: ara l'app només avisa que cal actualitzar.
 - Validació CUDA en una GPU llogada.
+- SAC pot bloquejar DLL sense signar de dependències (ctranslate2) la primera vegada: vegeu
+  docs/proves.md. Amb el MSI no s'ha reproduït.
