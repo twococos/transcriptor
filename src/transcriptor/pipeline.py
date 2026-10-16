@@ -85,11 +85,17 @@ FASES = [
 
 
 def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None = None,
-            cache: Cache | None = None, en_fase: Callable[[int, str], None] | None = None) -> Resultat:
-    """`en_fase(i, nom)` es crida en començar cada fase (índex dins FASES)."""
+            cache: Cache | None = None, en_fase: Callable[[int, str], None] | None = None,
+            comprova: Callable[[], None] | None = None) -> Resultat:
+    """`en_fase(i, nom)` es crida en començar cada fase (índex dins FASES).
+
+    `comprova()` es crida sovint (entre fases i dins les llargues) i llança una excepció si s'ha
+    d'aturar la feina."""
     cfg = cfg or Config()
 
     def fase(i: int) -> None:
+        if comprova:
+            comprova()
         if en_fase:
             en_fase(i, FASES[i])
 
@@ -118,7 +124,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     fase(1)
     veu = cache.fitxer("separate", "vocals.wav", {"model": separador, "shifts": shifts},
                        lambda desti: separate.separa_veu(cami_audio, desti, perfil, separador, shifts,
-                                                         dir_models))
+                                                         dir_models, comprova))
 
     # 3. Ritme
     fase(2)
@@ -154,7 +160,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
                                     "idioma": idioma_asr, "veu": separador, "deteccio": 6,
                                     **({"vad": cfg.vad_llindar} if cfg.vad_llindar != 0.5 else {})},
                      lambda: lyrics_asr.transcriu(veu, perfil, cfg.whisper_model, compute_type, idioma_asr,
-                                                  vad_llindar=cfg.vad_llindar))
+                                                  vad_llindar=cfg.vad_llindar, comprova=comprova))
 
     idioma = idioma_asr or asr.get("idioma") or "ca"
 

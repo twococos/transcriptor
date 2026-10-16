@@ -10,6 +10,10 @@ import soundfile as sf
 import soxr
 
 
+# Amb pythonw (l'app) no hi ha consola: sense això, cada ffmpeg/yt-dlp n'obriria una de buida un instant
+SENSE_FINESTRA = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 def ffmpeg() -> str:
     """Camí a l'executable ffmpeg que porta la wheel d'imageio-ffmpeg."""
     import imageio_ffmpeg
@@ -21,7 +25,7 @@ def converteix_a_wav(entrada: Path, sortida: Path, sr: int = 44100, canals: int 
     subprocess.run(
         [ffmpeg(), "-y", "-v", "error", "-i", str(entrada), "-ar", str(sr), "-ac", str(canals),
          "-c:a", "pcm_s16le", str(sortida)],
-        check=True,
+        check=True, creationflags=SENSE_FINESTRA,
     )
 
 

@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from .audio import ffmpeg
+from .audio import SENSE_FINESTRA, ffmpeg
 from .config import dir_base
 
 log = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ def desa(id_feina: int, feina: dict, analisi_json: str, wav: Path | None, segons
         try:
             subprocess.run([ffmpeg(), "-y", "-v", "error", "-i", str(wav), "-c:a", "libopus", "-b:a", "96k",
                             str(temporal)], check=True, capture_output=True,
-                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                           creationflags=SENSE_FINESTRA)
             temporal.replace(desti / "audio.opus")
         except (OSError, subprocess.CalledProcessError) as e:
             log.warning("No s'ha pogut desar l'àudio de la feina %s: %s", id_feina, e)

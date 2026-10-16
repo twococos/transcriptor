@@ -19,6 +19,7 @@ import logging.handlers
 import math
 import os
 import queue
+import subprocess
 import sys
 import threading
 import time
@@ -55,6 +56,23 @@ def _configura_logs() -> None:
     logging.basicConfig(level=logging.INFO, handlers=[gestor])
     for soroll in ("httpx", "httpx2", "huggingface_hub", "urllib3", "faster_whisper", "numba"):
         logging.getLogger(soroll).setLevel(logging.WARNING)
+
+
+def _sense_consoles() -> None:
+    """Cap procés fill obre finestra de consola, tampoc els que llancen les llibreries (audio-separator
+    i pydub criden ffmpeg): amb pythonw cada crida mostraria un cmd buit un instant."""
+    if sys.platform != "win32":
+        return
+    original = subprocess.Popen.__init__
+    noves = subprocess.CREATE_NEW_CONSOLE | subprocess.DETACHED_PROCESS
+
+    def init(self, *args, **kwargs):
+        flags = kwargs.get("creationflags", 0)
+        if not flags & noves:
+            kwargs["creationflags"] = flags | subprocess.CREATE_NO_WINDOW
+        original(self, *args, **kwargs)
+
+    subprocess.Popen.__init__ = init
 
 
 def _sortides_nul_les() -> None:
@@ -401,7 +419,8 @@ class App:
     def _textos(self, fase: str) -> tuple[str, str]:
         e = self.estat
         if self.aturant and fase != "aturat":
-            return "Aturant…", "Acabant d'alliberar la feina perquè la pugui fer un altre ordinador."
+            return "Aturant…", ("La cançó torna a la cua perquè la pugui fer un altre ordinador. "
+                                "S'atura en acabar el càlcul que té entre mans (uns segons).")
         if fase == "descarregant":
             d = self.descarrega
             return "Descarregant els models", f"Pas {d.i} de {d.n}: {d.pas}. Només cal el primer cop."
@@ -715,6 +734,7 @@ def windows_nom() -> str:
 
 def main() -> None:
     _sortides_nul_les()
+    _sense_consoles()
     # Models, cache i àudio temporal fora del directori d'instal·lació
     base = os.environ.get("LOCALAPPDATA") or str(dir_app())
     os.environ.setdefault("TX_HOME", os.path.join(base, "Transcriptor", "dades"))

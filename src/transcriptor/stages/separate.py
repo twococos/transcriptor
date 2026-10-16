@@ -6,6 +6,7 @@ import gc
 import logging
 import tempfile
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 
@@ -17,22 +18,27 @@ log = logging.getLogger(__name__)
 MODEL_ROFORMER = "vocals_mel_band_roformer.ckpt"
 
 
-def separa_veu(mescla: Path, desti: Path, perfil: Perfil, model: str, shifts: int, dir_models: Path) -> str:
-    """Escriu la veu a `desti` (WAV). Retorna el nom del model usat."""
+def separa_veu(mescla: Path, desti: Path, perfil: Perfil, model: str, shifts: int, dir_models: Path,
+               comprova: Callable[[], None] | None = None) -> str:
+    """Escriu la veu a `desti` (WAV). Retorna el nom del model usat.
+
+    `comprova()` es crida a cada tros (només amb demucs) i pot llançar una excepció per aturar-ho."""
     if model == "roformer":
         try:
             return _roformer(mescla, desti, perfil, dir_models)
         except ImportError:
             log.warning("audio-separator no està instal·lat (extra `roformer`): es fa servir htdemucs")
             model = "htdemucs"
-    return _demucs(mescla, desti, perfil, model, shifts)
+    return _demucs(mescla, desti, perfil, model, shifts, comprova)
 
 
-def _demucs(mescla: Path, desti: Path, perfil: Perfil, model: str, shifts: int) -> str:
+def _demucs(mescla: Path, desti: Path, perfil: Perfil, model: str, shifts: int,
+            comprova: Callable[[], None] | None = None) -> str:
     import torch
     from demucs.api import Separator
 
-    sep = Separator(model=model, device=perfil.device, shifts=shifts, progress=False)
+    sep = Separator(model=model, device=perfil.device, shifts=shifts, progress=False,
+                    callback=(lambda _d: comprova()) if comprova else None)
     senyal, sr = llegeix(mescla)
     try:
         _, fonts = sep.separate_tensor(torch.from_numpy(np.ascontiguousarray(senyal.T)), sr)

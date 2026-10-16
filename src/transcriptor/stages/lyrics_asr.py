@@ -8,6 +8,7 @@ from __future__ import annotations
 import gc
 import logging
 from pathlib import Path
+from typing import Callable
 
 from ..audio import llegeix
 from ..device import Perfil
@@ -29,7 +30,8 @@ def _model(nom: str, perfil: Perfil, compute_type: str):
 
 
 def transcriu(veu: Path, perfil: Perfil, model: str, compute_type: str, idioma: str | None = None,
-              prompt: str | None = None, vad_llindar: float = 0.5) -> dict:
+              prompt: str | None = None, vad_llindar: float = 0.5,
+              comprova: Callable[[], None] | None = None) -> dict:
     """Retorna {"idioma", "segments": [{start, end, text}], "paraules": [{start, end, text, conf}]}.
 
     `idioma` None = detecció automàtica (l'idioma de la BD no sempre és fiable).
@@ -44,7 +46,12 @@ def transcriu(veu: Path, perfil: Perfil, model: str, compute_type: str, idioma: 
             # Detecció sobre diversos trossos: els primers 30 s sovint són instrumentals
             language_detection_segments=6,
         )
-        segments = list(segments)
+        llista = []
+        for s in segments:  # és un generador: cada segment es calcula en demanar-lo
+            if comprova:
+                comprova()
+            llista.append(s)
+        segments = llista
     finally:
         del wm
         gc.collect()

@@ -166,3 +166,35 @@ def test_cua_buida(worker_fals):
         assert w.estat.missatge == "Aturat" and w.estat.fetes == 0
     finally:
         s.tanca()
+
+
+def test_aturar_interromp_el_pipeline_i_allibera_de_seguida(worker_fals):
+    """L'aturada no espera que acabi la cançó: la feina s'allibera en un segon i el pipeline s'atura
+    al següent punt de control."""
+    import time
+
+    s = Servidor([FEINA])
+    alliberada_durant_el_calcul = []
+
+    def llarg(*_a, comprova, **_k):
+        threading.Timer(0.3, w.atura.set).start()
+        inici = time.monotonic()
+        while time.monotonic() - inici < 3:  # un càlcul llarg sense punts de control
+            time.sleep(0.05)
+        alliberada_durant_el_calcul.append(7 in s.fallades)
+        while time.monotonic() - inici < 60:
+            comprova()
+            time.sleep(0.05)
+        return _resultat_fals()
+
+    try:
+        w = worker_fals(s, pipeline=llarg)
+        inici = time.monotonic()
+        w.bucle()
+        assert time.monotonic() - inici < 10
+        assert alliberada_durant_el_calcul == [True]
+        assert s.fallades[7]["released"] is True
+        assert sum(p.endswith("/fail") for p, _ in s.peticions) == 1
+        assert 7 not in s.resultats
+    finally:
+        s.tanca()

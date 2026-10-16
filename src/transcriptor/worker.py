@@ -4,8 +4,9 @@ Protocol proposat a docs/api_worker.md (pendent de validar a la Fase 6). Només 
 sortida, així funciona igual al PC, al servidor, a casa d'un amic o en una GPU llogada.
 
 Bucle: claim → (heartbeat en paral·lel) pipeline → result | fail → esborrar l'àudio → repetir.
-Aturada neta: si es demana parar a mitja feina, l'allibera (fail amb released=true) perquè torni
-a la cua.
+Aturada neta: si es demana parar a mitja feina, l'allibera de seguida (fail amb released=true)
+perquè torni a la cua, i el pipeline s'interromp al següent punt de control (entre fases, a cada
+tros de demucs o a cada segment de Whisper).
 """
 
 from __future__ import annotations
@@ -129,8 +130,18 @@ class Worker:
         log.info(missatge)
         self.en_canvi(self.estat)
 
-    def _batec(self, id_feina: int, lease_s: float, perduda: threading.Event, fi: threading.Event) -> None:
-        while not fi.wait(max(lease_s / 3, 5)):
+    def _batec(self, id_feina: int, lease_s: float, perduda: threading.Event, fi: threading.Event,
+               alliberada: threading.Event) -> None:
+        darrer = time.monotonic()
+        while not fi.wait(1):
+            if self.atura.is_set():
+                # S'allibera ara, sense esperar que el pipeline arribi a un punt de control
+                self.client.falla(id_feina, "Worker aturat", alliberada=True)
+                alliberada.set()
+                return
+            if time.monotonic() - darrer < max(lease_s / 3, 5):
+                continue
+            darrer = time.monotonic()
             try:
                 self.client.heartbeat(id_feina)
             except FeinaPerduda:
@@ -140,19 +151,24 @@ class Worker:
                 log.warning("Heartbeat fallit (es reintentarà): %s", e)
 
     def _en_fase(self, i: int, nom: str) -> None:
+        self._comprova()
         self.estat.pas_feina, self.estat.i_pas, self.estat.n_passos = nom, i + 1, len(FASES) + 1
         self.estat.inici_pas = time.time()
         log.info("Fase %d/%d: %s", i + 1, len(FASES) + 1, nom)
         self.en_canvi(self.estat)
+
+    def _comprova(self) -> None:
+        if self.atura.is_set():
+            raise InterruptedError
 
     def processa(self, feina: dict) -> None:
         id_feina = feina["id"]
         self.estat.feina_actual = f"{feina.get('title') or ''} — {feina.get('artist') or ''}".strip(" —")
         self.estat.inici_feina = time.time()
         self._avisa(f"Processant: {self.estat.feina_actual or feina['source_url']}", "processant")
-        perduda, fi = threading.Event(), threading.Event()
+        perduda, fi, alliberada = threading.Event(), threading.Event(), threading.Event()
         batec = threading.Thread(target=self._batec, daemon=True,
-                                 args=(id_feina, float(feina.get("lease_seconds", 600)), perduda, fi))
+                                 args=(id_feina, float(feina.get("lease_seconds", 600)), perduda, fi, alliberada))
         batec.start()
         inici = time.perf_counter()
         cache = Cache(id_canco(feina["source_url"]))
@@ -160,7 +176,7 @@ class Worker:
             res = executa(Entrada(font=feina["source_url"], titol=feina.get("title"), artista=feina.get("artist"),
                                   idioma=feina.get("language"), text_usuari=feina.get("lyrics_text"),
                                   content_bd=feina.get("song_content")),
-                          self.cfg, self.perfil, cache, en_fase=self._en_fase)
+                          self.cfg, self.perfil, cache, en_fase=self._en_fase, comprova=self._comprova)
             self._en_fase(len(FASES), "Enviant el resultat")
             if perduda.is_set():
                 raise FeinaPerduda(id_feina)
@@ -177,7 +193,11 @@ class Worker:
                 except Exception:  # noqa: BLE001 — desar-la en local no ha de fer fallar la feina
                     log.exception("No s'ha pogut desar la feina %s en local", id_feina)
         except InterruptedError:
-            self.client.falla(id_feina, "Worker aturat", alliberada=True)
+            fi.set()
+            batec.join(timeout=60)  # potser l'està alliberant ara mateix
+            if not alliberada.is_set():
+                self.client.falla(id_feina, "Worker aturat", alliberada=True)
+            log.info("Feina %s alliberada", id_feina)
         except KeyboardInterrupt:
             self.client.falla(id_feina, "Worker aturat (Ctrl+C)", alliberada=True)
             raise

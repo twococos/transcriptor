@@ -12,7 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from ..audio import converteix_a_wav, ffmpeg
+from ..audio import SENSE_FINESTRA, converteix_a_wav, ffmpeg
 
 log = logging.getLogger(__name__)
 
@@ -89,6 +89,7 @@ def descarrega(entrada: str, desti: Path) -> dict:
              "--no-simulate", "--print", "%(id)s\t%(title)s\t%(channel)s\t%(duration)s",
              url],
             capture_output=True, text=True, encoding="utf-8", errors="replace", env=entorn,
+            creationflags=SENSE_FINESTRA,  # els fills (ffmpeg, deno) hereten la consola amagada
         )
         if sortida.returncode != 0:
             error = sortida.stderr.strip()[-500:] or f"yt-dlp ha sortit amb el codi {sortida.returncode}"
