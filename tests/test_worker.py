@@ -29,6 +29,16 @@ class Servidor:
             def log_message(self, *a):
                 pass
 
+            def do_GET(self):  # noqa: N802
+                servidor.peticions.append((self.path, None))
+                if self.headers.get("Authorization") != f"Bearer {servidor.token}":
+                    return self._respon(401, {"error": "token"})
+                if self.path == "/api/transcriber/me":
+                    return self._respon(200, {"id": 3, "name": "PC de prova", "active": True, "jobs_done": 2})
+                if self.path == "/api/transcriber/leaderboard":
+                    return self._respon(200, {"me": {"id": 3, "name": "PC de prova"}, "periods": {}})
+                return self._respon(404, {"error": "no"})
+
             def do_POST(self):  # noqa: N802
                 cos = json.loads(self.rfile.read(int(self.headers["Content-Length"] or 0)) or b"{}")
                 servidor.peticions.append((self.path, cos))
@@ -65,7 +75,8 @@ class Servidor:
 def _resultat_fals(*_a, **_k):
     analisi = SongAnalysis(source=Font(duration_s=1.0))
     proposta = ImportResult(title="T", artist="A", key="Am", capo=0, language="ca", content="<sec>Estrofa 1</sec>")
-    return type("R", (), {"analisi": analisi, "proposta": proposta})()
+    stats = {"v": 1, "audio": {"duration_s": 1.0}, "timing": {"total_s": 0.5, "stages_s": {}, "cached": []}}
+    return type("R", (), {"analisi": analisi, "proposta": proposta, "estadistiques": stats})()
 
 
 @pytest.fixture
@@ -93,6 +104,8 @@ def test_processa_una_feina_i_envia_el_resultat(worker_fals):
         assert 7 in s.resultats
         assert s.resultats[7]["proposal"]["key"] == "Am"
         assert s.resultats[7]["analysis"]["v"] == 2
+        stats = s.resultats[7]["stats"]
+        assert stats["v"] == 1 and stats["timing"]["wall_s"] >= 0
         assert w.estat.fetes == 1
     finally:
         s.tanca()
@@ -196,5 +209,18 @@ def test_aturar_interromp_el_pipeline_i_allibera_de_seguida(worker_fals):
         assert s.fallades[7]["released"] is True
         assert sum(p.endswith("/fail") for p, _ in s.peticions) == 1
         assert 7 not in s.resultats
+    finally:
+        s.tanca()
+
+
+def test_nom_i_classificacions_del_servidor():
+    s = Servidor([])
+    try:
+        client = worker_mod.Client(s.url, "secret", "ordinador", None)
+        assert client.jo()["name"] == "PC de prova"
+        assert client.classificacions()["me"]["id"] == 3
+        assert s.peticions[-1][0] == "/api/transcriber/leaderboard"
+        with pytest.raises(PermissionError):
+            worker_mod.Client(s.url, "dolent", "ordinador", None).jo()
     finally:
         s.tanca()

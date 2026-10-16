@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import merge, render, structure
+from . import estadistiques, merge, render, structure
 from .audio import durada as durada_audio
 from .cache import Cache
 from .config import Config, prepara_entorn_models
@@ -50,6 +50,7 @@ class Resultat:
     content: str
     proposta: ImportResult
     elements: list[dict] = field(default_factory=list)
+    estadistiques: dict = field(default_factory=dict)  # vegeu estadistiques.py
 
 
 def _hash(text: str | None) -> str | None:
@@ -183,6 +184,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
 
     # 8. Paraules i línies
     avisos: list[str] = []
+    al: dict | None = None
     if font_lletra["text"]:
         lin_text = linies_de_text(font_lletra["text"])
         al = lyrics_align.alinea(lin_text, asr["paraules"], durada)
@@ -259,4 +261,8 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
                             content=text_content, youtubeUrl=meta.get("url"))
     if aparellades is not None:
         analisi.models["lyrics_aparellades"] = str(aparellades)
-    return Resultat(analisi=analisi, content=text_content, proposta=proposta, elements=elements)
+    stats = estadistiques.calcula(analisi, perfil, cache.cached, al,
+                                  [w["conf"] for w in asr["paraules"] if w.get("conf") is not None],
+                                  cfg.acords_vocabulari)
+    return Resultat(analisi=analisi, content=text_content, proposta=proposta, elements=elements,
+                    estadistiques=stats)

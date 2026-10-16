@@ -23,6 +23,7 @@ class Cache:
         self.dir = (base or dir_base() / "cache") / id_canco
         self.dir.mkdir(parents=True, exist_ok=True)
         self.temps: dict[str, float] = {}
+        self.cached: set[str] = set()  # etapes servides de la cache en aquesta execució
 
     def cami(self, nom: str) -> Path:
         return self.dir / nom
@@ -39,6 +40,7 @@ class Cache:
         f = self.cami(f"{etapa}.json")
         if f.exists() and self._params_ok(etapa, params):
             log.info("%s: de la cache", etapa)
+            self.cached.add(etapa)
             return json.loads(f.read_text(encoding="utf-8"))
         inici = time.perf_counter()
         resultat = calcula()
@@ -53,6 +55,7 @@ class Cache:
         f = self.cami(nom)
         if f.exists() and self._params_ok(etapa, params):
             log.info("%s: de la cache", etapa)
+            self.cached.add(etapa)
             return f
         inici = time.perf_counter()
         temporal = f.with_suffix(".tmp" + f.suffix)

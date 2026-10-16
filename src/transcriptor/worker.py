@@ -63,7 +63,8 @@ class EstatWorker:
 
 
 class Client:
-    def __init__(self, api: str, token: str, nom: str, perfil: Perfil, timeout: float = 30):
+    def __init__(self, api: str, token: str, nom: str, perfil: Perfil | None, timeout: float = 30):
+        """`nom`: el de l'ordinador (l'admin el veu com a hostname). `perfil`: només per al claim."""
         self.api = api.rstrip("/")
         self.sessio = requests.Session()
         self.sessio.headers.update({"Authorization": f"Bearer {token}",
@@ -73,7 +74,14 @@ class Client:
         self.timeout = timeout
 
     def _post(self, cami: str, dades: dict) -> requests.Response:
-        r = self.sessio.post(f"{self.api}/api/transcriber{cami}", json=dades, timeout=self.timeout)
+        return self._comprova(self.sessio.post(f"{self.api}/api/transcriber{cami}", json=dades,
+                                               timeout=self.timeout))
+
+    def _get(self, cami: str) -> requests.Response:
+        return self._comprova(self.sessio.get(f"{self.api}/api/transcriber{cami}", timeout=self.timeout))
+
+    @staticmethod
+    def _comprova(r: requests.Response) -> requests.Response:
         if r.status_code == 426:
             raise VersioMassaAntiga(r.json().get("min_version", "?"))
         if r.status_code == 401:
@@ -96,8 +104,23 @@ class Client:
             raise FeinaPerduda(id_feina)
         r.raise_for_status()
 
-    def resultat(self, id_feina: int, proposta: dict, analisi: dict) -> None:
-        self._post(f"/jobs/{id_feina}/result", {"proposal": proposta, "analysis": analisi}).raise_for_status()
+    def resultat(self, id_feina: int, proposta: dict, analisi: dict, stats: dict | None = None) -> None:
+        dades = {"proposal": proposta, "analysis": analisi}
+        if stats:
+            dades["stats"] = stats
+        self._post(f"/jobs/{id_feina}/result", dades).raise_for_status()
+
+    def jo(self) -> dict:
+        """Dades del worker del token: `{id, name, active, jobs_done}`. El nom el posa l'admin."""
+        r = self._get("/me")
+        r.raise_for_status()
+        return r.json()
+
+    def classificacions(self) -> dict:
+        """Classificacions dels workers (vegeu docs/api_worker.md)."""
+        r = self._get("/leaderboard")
+        r.raise_for_status()
+        return r.json()
 
     def falla(self, id_feina: int, error: str, alliberada: bool = False, permanent: bool = False) -> None:
         try:
@@ -182,7 +205,10 @@ class Worker:
                 raise FeinaPerduda(id_feina)
             if self.atura.is_set():
                 raise InterruptedError
-            self.client.resultat(id_feina, res.proposta.model_dump(), a_compacte(res.analisi))
+            if res.estadistiques:  # es desen també en local (en_feta)
+                res.estadistiques["timing"]["wall_s"] = round(time.perf_counter() - inici, 1)
+            self.client.resultat(id_feina, res.proposta.model_dump(), a_compacte(res.analisi),
+                                 res.estadistiques or None)
             durada = time.perf_counter() - inici
             self.estat.fetes += 1
             self.estat.temps_mitja_s += (durada - self.estat.temps_mitja_s) / self.estat.fetes

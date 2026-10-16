@@ -1,6 +1,6 @@
 # Protocol worker ↔ canconer
 
-> Estat: **implementat** (Fase 6). Client: `src/transcriptor/worker.py`. Servidor (canconer):
+> Estat: **implementat** (Fase 6; estadístiques, `/me` i classificacions a la 0.1.7). Client: `src/transcriptor/worker.py`. Servidor (canconer):
 > `src/app/api/transcriber/*` i `src/db/queries/transcriptions.ts`. Proves: `tests/test_worker.py`
 > (servidor simulat) i una prova d'extrem a extrem contra `next dev` amb una còpia de la BD.
 
@@ -60,8 +60,10 @@ Cos buit. Cada `lease_seconds / 3`. Allarga el lease. `409` = la feina ja no és
 ```json
 { "proposal": { "title": "…", "artist": "…", "key": "A", "capo": 1, "language": "ca",
                 "tags": "", "content": "<sec>…", "youtubeUrl": "…" },
-  "analysis": { "v": 2, … } }
+  "analysis": { "v": 2, … },
+  "stats": { "v": 1, … } }
 ```
+- `stats` (opcional, des de la 0.1.7): com s'ha fet la feina. Vegeu [Estadístiques](#estadístiques-de-la-feina-stats-v1).
 - `proposal` té la forma d'`ImportResult` (`src/lib/importers/types.ts` del canconer). En mode `analyze`
   s'ignora.
 - `analysis` és l'anàlisi en **format compacte v2** (vegeu més avall). El canconer la valida amb Zod
@@ -81,6 +83,73 @@ Cos buit. Cada `lease_seconds / 3`. Allarga el lease. `409` = la feina ja no és
 - `kind: "permanent"`: no es reintentarà mai (vídeo no disponible, privat, amb restricció d'edat…; el
   worker ho deriva dels missatges de yt-dlp, `ErrorDescarrega`).
 - `kind: "temporary"`: es reintenta més tard (`not_before` = ara + 1 h, 2 h, 4 h…) fins a 3 intents.
+
+## `GET /api/transcriber/me`
+
+Dades del worker del token: `{"id": 5, "name": "PC de la Marta", "active": true, "jobs_done": 12}`. El
+nom el posa l'admin en crear el token; l'app el mostra (no es configura al worker) i, de pas, la crida
+serveix per validar el token quan es desa. La versió mínima es comprova amb el `User-Agent`
+(`transcriptor-worker/x.y.z`).
+
+## `GET /api/transcriber/leaderboard`
+
+Classificacions dels workers, de sempre i del mes en curs (UTC), amb la posició del que consulta:
+```jsonc
+{ "me": { "id": 5, "name": "Jo" },
+  "min_songs_speed": 5,
+  "periods": {
+    "all":   { "songs": Board, "total_time": Board, "speed": Board },
+    "month": { … } } }
+// Board = { "top": [{ "rank": 1, "worker_id": 2, "name": "Marta", "value": 8, "me": false }, …3],
+//           "me": { "rank": 4, "value": 3, "songs": 3 } | null }
+```
+- Compten les feines `done` (les duplicades i fallades no). Hi surten tots els workers, també els
+  desactivats; un worker **eliminat** perd les seves feines (per revocar-lo, millor desactivar-lo).
+- `songs`: nombre de cançons. `total_time`: segons (`elapsed_seconds`, mesurat pel servidor des del
+  claim fins al resultat). `speed`: segons de càlcul per minut d'àudio (`Σ temps / Σ minuts`; com més
+  baix, millor), amb un mínim de `min_songs_speed` cançons.
+- Les feines amb alguna etapa de la cache local (`stats.timing.cached` no buit) compten com a cançó però
+  no per als temps. Les feines sense `stats` (workers antics) no compten per a la rapidesa.
+- `me.rank` és null si no hi arriba (rapidesa amb menys cançons del mínim; `me.songs` diu quantes en té).
+- Empats: guanya qui hi va arribar primer.
+
+## Estadístiques de la feina (`stats`, v1)
+
+JSON obert, separat de l'anàlisi: l'anàlisi és *què hi ha a l'àudio*; les estadístiques, *com s'ha fet
+aquesta feina*. Es desen a `transcription_jobs.stats` i l'app les desa també en local amb cada cançó.
+El servidor només valida `v`, `audio.duration_s`, `timing.total_s` i `timing.cached` (els fa servir
+per a les classificacions) i deixa passar la resta, fins a 32 KB. **Per afegir un camp nou n'hi ha
+prou de posar-lo al worker** (`estadistiques.py`): l'admin i l'app el mostren amb el seu camí.
+
+```jsonc
+{ "v": 1, "app_version": "0.1.7",
+  "device": { "type": "cpu", "name": "Intel i7-6700", "vram_gb": 0, "threads": 4 },
+  "audio": { "duration_s": 214.0 },
+  "timing": { "total_s": 470.7, "wall_s": 482.0,
+              "stages_s": { "fetch": 6.2, "separate": 188.0, "rhythm": 21.3, "chords": 14.9,
+                            "lyrics_source": 1.1, "lyrics_asr": 236.4, "postproces": 2.8 },
+              "cached": [] },
+  "lyrics": { "source": "lrclib", "align": "transfer-asr", "matched_ratio": 0.87, "timed_ratio": 0.93,
+              "asr_mean_conf": 0.78, "discarded_lines": 2, "words": 214, "lines": 32 },
+  "chords": { "count": 58, "distinct": 6, "mean_conf": 0.81, "vocabulary": "sevenths" },
+  "key": { "label": "Am", "confidence": 0.74, "capo": 0 },
+  "tempo": { "bpm": 96, "time_signature": "4/4" },
+  "structure": { "sections": 8 },
+  "models": { "separation": "htdemucs", "chords": "btc-large-voca", … },
+  "warnings": [ "…" ],
+  "checks": {} }   // reservat per a comprovacions futures (p. ex. acords contrastats amb una web)
+```
+
+| Camp | Què és |
+|---|---|
+| `timing.total_s` | Temps del pipeline. `wall_s`: des que el worker comença fins abans d'enviar. |
+| `timing.stages_s` | Temps de cada etapa calculada (les de la cache no hi surten). |
+| `timing.cached` | Etapes servides de la cache local (reprocessar una cançó ja feta). |
+| `lyrics.matched_ratio` | Part del text conegut (BD, LRCLIB o enganxat) que l'alineació Needleman-Wunsch aproximada ha aparellat amb una paraula sentida per Whisper. No és un "% d'encert": diu quant del text s'ha pogut ancorar a l'àudio; per sota de 0,4 surt l'avís "potser no és la mateixa versió". Només amb lletra coneguda. |
+| `lyrics.timed_ratio` | Part de les paraules finals amb temps propi (la resta s'interpolen). |
+| `lyrics.asr_mean_conf` | Probabilitat mitjana que Whisper dona a cada paraula sentida. És la mesura de qualitat quan la lletra ve de Whisper. |
+| `chords.mean_conf` | Probabilitat mitjana del camí de Viterbi dels acords (BTC), ponderada per durada. |
+| `key.confidence` | Puntuació del to (perfils de Krumhansl). |
 
 ## Format compacte de l'anàlisi (v2)
 

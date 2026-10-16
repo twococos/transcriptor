@@ -3,9 +3,12 @@
     pythonw -m transcriptor.app
 
 - El primer cop només es veu la configuració (benvinguda): cal enganxar el token. Un cop desada, la
-  finestra té dues pestanyes: "Estat" (la primera) i "Configuració".
+  finestra té tres pestanyes: "Estat" (la primera), "Classificacions" i "Configuració".
 - "Estat": una animació diu què fa el worker (barres que ballen = transcrivint, que respiren = esperant),
-  la barra de progrés de la primera descàrrega de models i les cançons fetes, que s'obren al visor.
+  la barra de progrés de la primera descàrrega de models, la copa si és al podi d'alguna classificació i
+  les cançons fetes, amb les seves estadístiques desplegables, que s'obren al visor.
+- "Classificacions": vegeu classificacions.py. El nom del worker no es configura: el posa l'admin i
+  l'app el demana al servidor amb el token (i així el valida).
 - La icona (pystray) té un menú: activar/desactivar, obrir la finestra, sortir.
 - El worker corre en un fil; desactivar-lo l'atura netament (allibera la feina en curs).
 - El procés corre amb prioritat baixa perquè no alenteixi l'ordinador.
@@ -34,7 +37,8 @@ from ..config import Config
 from ..device import detecta
 from ..models import EstatDescarrega
 from ..worker import Client, EstatWorker, VersioMassaAntiga, Worker
-from . import windows
+from . import classificacions, detalls, windows
+from .grafics import Consell, copa, font_icones, text_icona
 from .settings import Preferencies, dir_app
 
 log = logging.getLogger("transcriptor.app")
@@ -174,11 +178,12 @@ class Activitat(tk.Canvas):
 
 
 class LlistaFetes(ttk.Frame):
-    """Llista desplaçable de les cançons fetes, cadascuna amb els botons del visor i d'esborrar."""
+    """Llista desplaçable de les cançons fetes, cadascuna amb els botons de detalls, del visor i d'esborrar."""
 
     def __init__(self, pare, app: "App"):
         super().__init__(pare)
         self.app = app
+        self.desplegades: set[Path] = set()
         self.canvas = tk.Canvas(self, bg=_fons(), highlightthickness=0, height=150)
         barra = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=barra.set)
@@ -206,25 +211,69 @@ class LlistaFetes(ttk.Frame):
                            "per veure com ha quedat la lletra i els acords sincronitzats amb la música.",
                       ).pack(anchor="w", pady=8)
             return
+        existents = {f.dir for f in llista}
+        self.desplegades &= existents
         for i, feta in enumerate(llista):
             if i:
                 ttk.Separator(self.interior).pack(fill="x", pady=6)
-            fila = ttk.Frame(self.interior)
-            fila.pack(fill="x")
-            # Els botons primer: si no hi cap tot, s'escurça el text i no pas els botons
-            ttk.Button(fila, text="Esborra", command=lambda f=feta: self.app.esborra(f)).pack(side="right")
-            ttk.Button(fila, text="Obre al visor", style="Accent.TButton",
-                       command=lambda f=feta: self.app.obre_visor(f)).pack(side="right", padx=6)
-            text = ttk.Frame(fila)
-            text.pack(side="left", fill="x", expand=True)
-            nom = feta.nom if len(feta.nom) <= 34 else feta.nom[:33] + "…"
-            ttk.Label(text, text=nom, style="Canco.TLabel").pack(anchor="w")
-            detalls = [_data(feta.data)]
-            if feta.segons:
-                detalls.append(f"{_durada(feta.segons)} de càlcul")
-            detalls.append(_mida(feta.mida) if feta.te_audio else "YouTube")
-            ttk.Label(text, text=" · ".join(detalls), style="Secundari.TLabel").pack(anchor="w")
+            self._fila(feta)
         self.canvas.yview_moveto(0)
+
+    def _boto(self, pare, icona: str, consell: str, ordre, accent: bool = False) -> ttk.Button:
+        amb_font = bool(self.app.font_icones)
+        # "Icona.Accent.TButton" hereta d'"Accent.TButton": la mateixa aparença amb la font d'icones
+        estil = ("Icona." if amb_font else "") + ("Accent.TButton" if accent else "TButton")
+        b = ttk.Button(pare, text=text_icona(icona, amb_font), style=estil, command=ordre,
+                       width=3 if amb_font else 0)
+        Consell(b, consell)
+        return b
+
+    def _fila(self, feta: fetes.Feta) -> None:
+        bloc = ttk.Frame(self.interior)
+        bloc.pack(fill="x")
+        fila = ttk.Frame(bloc)
+        fila.pack(fill="x")
+        oberta = feta.dir in self.desplegades
+        # Els botons primer: si no hi cap tot, s'escurça el text i no pas els botons
+        self._boto(fila, "esborra", "Esborra", lambda: self.app.esborra(feta)).pack(side="right")
+        self._boto(fila, "visor", "Obre al visor", lambda: self.app.obre_visor(feta), accent=True
+                   ).pack(side="right", padx=4)
+        self._boto(fila, "plega" if oberta else "desplega", "Amaga els detalls" if oberta else "Detalls",
+                   lambda: self._commuta(feta)).pack(side="right")
+        text = ttk.Frame(fila)
+        text.pack(side="left", fill="x", expand=True)
+        nom = feta.nom if len(feta.nom) <= 34 else feta.nom[:33] + "…"
+        ttk.Label(text, text=nom, style="Canco.TLabel").pack(anchor="w")
+        resum = [_data(feta.data)]
+        if feta.segons:
+            resum.append(f"{_durada(feta.segons)} de càlcul")
+        resum.append(_mida(feta.mida) if feta.te_audio else "YouTube")
+        ttk.Label(text, text=" · ".join(resum), style="Secundari.TLabel").pack(anchor="w")
+        if oberta:
+            self._detalls(bloc, feta)
+
+    def _commuta(self, feta: fetes.Feta) -> None:
+        self.desplegades ^= {feta.dir}
+        self.mostra(fetes.llista())
+
+    def _detalls(self, pare, feta: fetes.Feta) -> None:
+        grups = detalls.grups(fetes.stats_de(feta))
+        caixa = ttk.Frame(pare, padding=(12, 6, 0, 2))
+        caixa.pack(fill="x")
+        if not grups:
+            ttk.Label(caixa, text="No hi ha dades d'aquesta cançó.", style="Secundari.TLabel").pack(anchor="w")
+            return
+        fila = 0
+        for titol, camps in grups:
+            ttk.Label(caixa, text=titol, style="Canco.TLabel").grid(row=fila, column=0, columnspan=2, sticky="w",
+                                                                     pady=(6 if fila else 0, 1))
+            fila += 1
+            for etiqueta, valor in camps:
+                ttk.Label(caixa, text=etiqueta, style="Secundari.TLabel").grid(row=fila, column=0, sticky="nw",
+                                                                              padx=(0, 12))
+                ttk.Label(caixa, text=valor, wraplength=260, justify="left").grid(row=fila, column=1, sticky="w")
+                fila += 1
+        caixa.columnconfigure(1, weight=1)
 
 
 class App:
@@ -243,6 +292,10 @@ class App:
         self.aturant = False
         self.visors: dict[Path, str] = {}  # directori de la cançó → URL del seu servidor
         self.n_historial = 0
+        self.font_icones: str | None = None
+        self.classificacions, self.classificacions_rebut = classificacions.carrega_desades()
+        self.classificacions_demanades = 0.0  # time.monotonic() de l'última petició
+        self.error_token: str | None = None
 
         self.arrel = tk.Tk()
         self.arrel.title("Transcriptor")
@@ -280,12 +333,17 @@ class App:
         estil.configure("Canco.TLabel", font=("Segoe UI Semibold", 10))
         estil.configure("Secundari.TLabel", foreground=secundari)
         estil.configure("Accent.TLabel", foreground=TARONJA, font=("Segoe UI Semibold", 10))
+        estil.configure("Error.TLabel", foreground="#d9534f")
+        self.font_icones = font_icones(self.arrel)
+        if self.font_icones:
+            for base in ("TButton", "Accent.TButton"):
+                estil.configure(f"Icona.{base}", font=(self.font_icones, 10), padding=(6, 4))
 
     def _vars(self) -> None:
         p = self.prefs
         self.var_api = tk.StringVar(value=p.api)
         self.var_token = tk.StringVar(value="●" * 8 if p.token_protegit else "")
-        self.var_nom = tk.StringVar(value=p.nom_worker)
+        self.var_nom = tk.StringVar(value=p.nom_worker or "—")  # el nom que li ha posat l'admin
         self.var_fils = tk.IntVar(value=p.max_fils)
         self.var_inactiu = tk.BooleanVar(value=p.nomes_inactiu)
         self.var_arrencada = tk.BooleanVar(value=windows.arrencada_activa())
@@ -324,13 +382,20 @@ class App:
         self.pestanyes = ttk.Notebook(f)
         self.pestanyes.pack(fill="both", expand=True)
         estat = ttk.Frame(self.pestanyes, padding=(14, 14))
+        self.pestanya_classificacions = classificacions.PestanyaClassificacions(
+            self.pestanyes, lambda: self._actualitza_classificacions(forca=True))
         config = ttk.Frame(self.pestanyes, padding=(14, 14))
         self.pestanyes.add(estat, text="  Estat  ")
+        self.pestanyes.add(self.pestanya_classificacions, text="  Classificacions  ")
         self.pestanyes.add(config, text="  Configuració  ")
         self._pestanya_estat(estat)
         self._formulari(config, benvinguda=False)
+        self.pestanyes.bind("<<NotebookTabChanged>>", self._canvi_pestanya)
         self._recarrega_fetes()
+        self._mostra_classificacions()
         self._refresca()
+        self._actualitza_jo()
+        self._actualitza_classificacions()
 
     def _pestanya_estat(self, f) -> None:
         dalt = ttk.Frame(f)
@@ -358,6 +423,15 @@ class App:
         self.lbl_comptadors.pack(side="left", padx=12)
         self.lbl_dispositiu = ttk.Label(f, text="", style="Secundari.TLabel")
         self.lbl_dispositiu.pack(anchor="w", pady=(8, 0))
+        # Si és al podi d'alguna classificació: la copa i on (clicar-hi porta a la pestanya)
+        self.marc_podi = ttk.Frame(f, cursor="hand2")
+        self.img_podi = ttk.Label(self.marc_podi)
+        self.img_podi.pack(side="left", padx=(0, 6))
+        self.lbl_podi = ttk.Label(self.marc_podi, text="", style="Accent.TLabel")
+        self.lbl_podi.pack(side="left")
+        self.consell_podi = Consell(self.marc_podi, "")
+        for w in (self.marc_podi, self.img_podi, self.lbl_podi):
+            w.bind("<Button-1>", lambda _e: self.pestanyes.select(self.pestanya_classificacions))
 
         ttk.Separator(f).pack(fill="x", pady=14)
         cap = ttk.Frame(f)
@@ -373,19 +447,21 @@ class App:
     def _formulari(self, f, benvinguda: bool) -> None:
         g = ttk.Frame(f)
         g.pack(fill="x")
-        files = [("Token", ttk.Entry(g, textvariable=self.var_token, show="●")),
-                 ("Servidor", ttk.Entry(g, textvariable=self.var_api)),
-                 ("Nom de l'ordinador", ttk.Entry(g, textvariable=self.var_nom))]
+        files: list[tuple[str, tk.Widget]] = [("Token", ttk.Entry(g, textvariable=self.var_token, show="●")),
+                                              ("Servidor", ttk.Entry(g, textvariable=self.var_api))]
         if not benvinguda:
+            files.append(("Nom al Cançoner", ttk.Label(g, textvariable=self.var_nom, style="Canco.TLabel")))
             files.append(("Nuclis (0 = tots)", ttk.Spinbox(g, from_=0, to=64, textvariable=self.var_fils, width=6)))
         for i, (etiqueta, camp) in enumerate(files):
             ttk.Label(g, text=etiqueta).grid(row=i, column=0, sticky="w", padx=(0, 12), pady=4)
-            camp.grid(row=i, column=1, sticky="w" if isinstance(camp, ttk.Spinbox) else "ew", pady=4)
+            camp.grid(row=i, column=1, sticky="w" if isinstance(camp, (ttk.Spinbox, ttk.Label)) else "ew", pady=4)
+            if isinstance(camp, ttk.Label):
+                Consell(camp, "El nom el posa l'administrador quan crea el token")
         g.columnconfigure(1, weight=1)
+        self.lbl_error_token = ttk.Label(f, text=self.error_token or "", style="Error.TLabel", wraplength=460)
+        self.lbl_error_token.pack(anchor="w")
         if benvinguda:
             files[0][1].focus_set()
-        if not self.var_nom.get():
-            self.var_nom.set(windows_nom())
 
         o = ttk.Frame(f)
         o.pack(fill="x", pady=(12, 0))
@@ -534,6 +610,12 @@ class App:
                 elif tipus == "error":
                     self.aturant = False
                     messagebox.showerror("Transcriptor", dades)
+                elif tipus == "jo":
+                    self._rep_jo(*dades)
+                elif tipus == "classificacions":
+                    self._rep_classificacions(*dades)
+                elif tipus == "actualitza_classificacions":
+                    self._actualitza_classificacions(forca=True)
                 self._refresca()
         except queue.Empty:
             pass
@@ -546,11 +628,13 @@ class App:
         if primer_cop and not token:
             messagebox.showwarning("Transcriptor", "Enganxa el token que t'han donat per poder començar.")
             return
-        self.prefs.api = self.var_api.get().strip()
+        api_nova = self.var_api.get().strip()
+        connexio_nova = api_nova != self.prefs.api
+        self.prefs.api = api_nova
         if token and set(token) != {"●"}:
             self.prefs.token = token
             self.var_token.set("●" * 8)
-        self.prefs.nom_worker = self.var_nom.get().strip()
+            connexio_nova = True
         try:
             self.prefs.max_fils = int(self.var_fils.get() or 0)
         except (tk.TclError, ValueError):
@@ -563,8 +647,12 @@ class App:
         self.prefs.desa()
 
         if primer_cop:
-            self._construeix_principal()
+            self._construeix_principal()  # ja comprova el token
             return
+        if connexio_nova:
+            self.var_nom.set("Comprovant el token…")
+            self._actualitza_jo()
+            self._actualitza_classificacions(forca=True)
         avis = "Desat ✓"
         if self.fil and self.fil.is_alive():
             avis += "  (el servidor i el token s'aplicaran quan el tornis a activar)"
@@ -610,8 +698,100 @@ class App:
         return None
 
     def _desa_feta(self, feina: dict, res, wav: Path, segons: float) -> None:
-        fetes.desa(feina["id"], feina, res.analisi.model_dump_json(), wav, segons, self.prefs.desa_audio)
+        fetes.desa(feina["id"], feina, res.analisi.model_dump_json(), wav, segons, self.prefs.desa_audio,
+                   stats=res.estadistiques)
         self.cues.put(("fetes", None))
+        self.cues.put(("actualitza_classificacions", None))
+
+    # ── Servidor: nom del worker i classificacions ──────────────────────────
+    def _client(self) -> Client:
+        return Client(self.prefs.api, self.prefs.token, windows_nom(), None)
+
+    def _en_fil(self, crida, tipus: str) -> None:
+        """Fa `crida(client)` en un fil i n'envia (resultat, error) a la cua com a `tipus`."""
+        if not self.prefs.token:
+            return
+
+        def corre() -> None:
+            try:
+                self.cues.put((tipus, (crida(self._client()), None)))
+            except PermissionError:
+                self.cues.put((tipus, (None, "token")))
+            except VersioMassaAntiga as e:
+                self.cues.put((tipus, (None, f"Cal actualitzar el Transcriptor (versió mínima {e})")))
+            except Exception as e:  # noqa: BLE001 — sense connexió, servidor antic (404)…
+                log.info("Petició al servidor fallida (%s): %s", tipus, e)
+                self.cues.put((tipus, (None, "connexio")))
+
+        threading.Thread(target=corre, daemon=True, name=tipus).start()
+
+    def _actualitza_jo(self) -> None:
+        self._en_fil(lambda c: c.jo(), "jo")
+
+    def _rep_jo(self, jo: dict | None, error: str | None) -> None:
+        if jo:
+            self.error_token = None
+            if jo.get("name") and jo["name"] != self.prefs.nom_worker:
+                self.prefs.nom_worker = jo["name"]
+                self.prefs.desa()
+        elif error == "token":
+            self.error_token = "El servidor no reconeix aquest token (incorrecte o revocat). Revisa'l i desa."
+            if self.pestanyes:
+                self.pestanyes.select(2)
+        elif error and error != "connexio":
+            self.error_token = error
+        self.var_nom.set(self.prefs.nom_worker or "—")
+        if self.lbl_error_token.winfo_exists():
+            self.lbl_error_token.config(text=self.error_token or "")
+
+    def _actualitza_classificacions(self, forca: bool = False) -> None:
+        """Com a molt un cop cada 5 min si no es força (en obrir la pestanya); sempre després d'una cançó."""
+        if not forca and time.monotonic() - self.classificacions_demanades < 300 and self.classificacions_demanades:
+            return
+        self.classificacions_demanades = time.monotonic()
+        self._en_fil(lambda c: c.classificacions(), "classificacions")
+
+    def _rep_classificacions(self, dades: dict | None, error: str | None) -> None:
+        if dades:
+            for avis in classificacions.millores(self.classificacions, dades):
+                self._notifica(avis + "!")
+            self.classificacions, self.classificacions_rebut = dades, time.time()
+            classificacions.desa(dades)
+            if (dades.get("me") or {}).get("name") and dades["me"]["name"] != self.prefs.nom_worker:
+                self.prefs.nom_worker = dades["me"]["name"]
+                self.prefs.desa()
+                self.var_nom.set(self.prefs.nom_worker)
+        textos_error = {"connexio": "Sense connexió", "token": "Token rebutjat"}
+        self._mostra_classificacions(textos_error.get(error, error) if error else None)
+
+    def _mostra_classificacions(self, error: str | None = None) -> None:
+        if not self.pestanyes:
+            return
+        self.pestanya_classificacions.mostra(self.classificacions, self.classificacions_rebut, error)
+        podis = classificacions.destacades(self.classificacions)
+        if podis:
+            from PIL import ImageTk
+
+            rank, text = podis[0]
+            self._foto_podi = ImageTk.PhotoImage(copa(rank, 18))
+            self.img_podi.config(image=self._foto_podi)
+            self.lbl_podi.config(text=text + (f"  (+{len(podis) - 1})" if len(podis) > 1 else ""))
+            self.consell_podi.text = "\n".join(t for _r, t in podis)
+            self.marc_podi.pack(anchor="w", pady=(6, 0), after=self.lbl_dispositiu)
+        else:
+            self.marc_podi.pack_forget()
+
+    def _canvi_pestanya(self, _e=None) -> None:
+        if self.pestanyes.select() == str(self.pestanya_classificacions):
+            self.pestanya_classificacions.refresca_rebut()
+            self._actualitza_classificacions()
+
+    def _notifica(self, text: str) -> None:
+        if self.icona:
+            try:
+                self.icona.notify(text, "Transcriptor")
+            except Exception:  # noqa: BLE001 — les notificacions no són imprescindibles
+                log.debug("No s'ha pogut mostrar la notificació", exc_info=True)
 
     def activa(self) -> None:
         if self.fil and self.fil.is_alive():
@@ -623,7 +803,7 @@ class App:
         if self.prefs.max_fils:
             perfil = replace(perfil, fils=self.prefs.max_fils)
         self.perfil = perfil
-        client = Client(self.prefs.api, self.prefs.token, self.prefs.nom_worker or windows_nom(), perfil)
+        client = Client(self.prefs.api, self.prefs.token, windows_nom(), perfil)
         self.worker = Worker(client, Config(), perfil, en_canvi=lambda e: self.cues.put(("estat", e)),
                              pot_treballar=self._pot_treballar, en_feta=self._desa_feta)
         self.descarrega = EstatDescarrega()

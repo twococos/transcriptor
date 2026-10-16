@@ -112,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--token", required=True)
     w.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"])
     w.add_argument("--config")
-    w.add_argument("--nom", default=None, help="Nom del worker (per defecte, el de l'ordinador)")
+    w.add_argument("--nom", default=None, help="Nom de l'ordinador que veu l'admin (per defecte, el del sistema); el nom del worker el posa l'admin")
     w.add_argument("--una", action="store_true", help="Processa una sola feina i surt")
     w.set_defaults(func=_worker)
 
