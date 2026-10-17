@@ -178,18 +178,28 @@ class Activitat(tk.Canvas):
 
 
 class LlistaFetes(ttk.Frame):
-    """Llista desplaçable de les cançons fetes, cadascuna amb els botons de detalls, del visor i d'esborrar."""
+    """Llista desplaçable de les cançons fetes, cadascuna amb els botons de detalls, del visor i d'esborrar.
+
+    Només hi pot haver una cançó desplegada. Desplegar-ne o plegar-ne una no refà la llista: s'anima l'alçada
+    dels detalls i es mou la vista perquè la fila clicada no es desplaci de la pantalla.
+    """
+
+    DURADA_ANIMACIO_MS = 220
+    PAS_MS = 15
 
     def __init__(self, pare, app: "App"):
         super().__init__(pare)
         self.app = app
-        self.desplegades: set[Path] = set()
+        self.oberta: Path | None = None
+        # Per a cada cançó visible: el bloc, el botó de detalls i el marc dels detalls (si n'hi ha)
+        self.blocs: dict[Path, tuple[ttk.Frame, ttk.Button, ttk.Frame | None]] = {}
+        self.animacio: str | None = None
         self.canvas = tk.Canvas(self, bg=_fons(), highlightthickness=0, height=150)
         barra = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=barra.set)
         self.interior = ttk.Frame(self.canvas)
         self.finestra = self.canvas.create_window(0, 0, window=self.interior, anchor="nw")
-        self.interior.bind("<Configure>", lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.interior.bind("<Configure>", lambda _e: self._regio())
         self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(self.finestra, width=e.width))
         self.canvas.pack(side="left", fill="both", expand=True)
         barra.pack(side="right", fill="y")
@@ -202,22 +212,34 @@ class LlistaFetes(ttk.Frame):
         if sota is not None and str(sota).startswith(str(self)) and self.canvas.yview() != (0.0, 1.0):
             self.canvas.yview_scroll(-1 * (e.delta // 120), "units")
 
+    def _regio(self) -> int:
+        alcada = self.interior.winfo_reqheight()
+        self.canvas.configure(scrollregion=(0, 0, self.canvas.winfo_width(), alcada))
+        return alcada
+
     def mostra(self, llista: list[fetes.Feta]) -> None:
+        self._atura_animacio()
+        inici = self.canvas.yview()[0]  # en refer la llista (cançó nova, esborrada) no es torna a dalt
         for w in self.interior.winfo_children():
             w.destroy()
+        self.blocs.clear()
         if not llista:
+            self.oberta = None
             ttk.Label(self.interior, style="Secundari.TLabel", wraplength=420, justify="left",
                       text="Encara no n'hi ha cap. Quan el worker acabi una cançó, la podràs obrir al visor "
                            "per veure com ha quedat la lletra i els acords sincronitzats amb la música.",
                       ).pack(anchor="w", pady=8)
+            self.canvas.yview_moveto(0)
             return
-        existents = {f.dir for f in llista}
-        self.desplegades &= existents
+        if self.oberta not in {f.dir for f in llista}:
+            self.oberta = None
         for i, feta in enumerate(llista):
             if i:
                 ttk.Separator(self.interior).pack(fill="x", pady=6)
             self._fila(feta)
-        self.canvas.yview_moveto(0)
+        self.update_idletasks()
+        self._regio()
+        self.canvas.yview_moveto(inici)
 
     def _boto(self, pare, icona: str, consell: str, ordre, accent: bool = False) -> ttk.Button:
         amb_font = bool(self.app.font_icones)
@@ -225,7 +247,7 @@ class LlistaFetes(ttk.Frame):
         estil = ("Icona." if amb_font else "") + ("Accent.TButton" if accent else "TButton")
         b = ttk.Button(pare, text=text_icona(icona, amb_font), style=estil, command=ordre,
                        width=3 if amb_font else 0)
-        Consell(b, consell)
+        b.consell = Consell(b, consell)
         return b
 
     def _fila(self, feta: fetes.Feta) -> None:
@@ -233,13 +255,12 @@ class LlistaFetes(ttk.Frame):
         bloc.pack(fill="x")
         fila = ttk.Frame(bloc)
         fila.pack(fill="x")
-        oberta = feta.dir in self.desplegades
         # Els botons primer: si no hi cap tot, s'escurça el text i no pas els botons
         self._boto(fila, "esborra", "Esborra", lambda: self.app.esborra(feta)).pack(side="right")
         self._boto(fila, "visor", "Obre al visor", lambda: self.app.obre_visor(feta), accent=True
                    ).pack(side="right", padx=4)
-        self._boto(fila, "plega" if oberta else "desplega", "Amaga els detalls" if oberta else "Detalls",
-                   lambda: self._commuta(feta)).pack(side="right")
+        boto = self._boto(fila, "desplega", "Detalls", lambda: self._commuta(feta))
+        boto.pack(side="right")
         text = ttk.Frame(fila)
         text.pack(side="left", fill="x", expand=True)
         nom = feta.nom if len(feta.nom) <= 34 else feta.nom[:33] + "…"
@@ -249,17 +270,99 @@ class LlistaFetes(ttk.Frame):
             resum.append(f"{_durada(feta.segons)} de càlcul")
         resum.append(_mida(feta.mida) if feta.te_audio else "YouTube")
         ttk.Label(text, text=" · ".join(resum), style="Secundari.TLabel").pack(anchor="w")
-        if oberta:
-            self._detalls(bloc, feta)
+        self.blocs[feta.dir] = (bloc, boto, None)
+        if feta.dir == self.oberta:
+            self._marc_detalls(feta).pack_propagate(True)  # sense animació: l'alçada que demanen els detalls
+
+    def _marca_boto(self, boto: ttk.Button, obert: bool) -> None:
+        boto.configure(text=text_icona("plega" if obert else "desplega", bool(self.app.font_icones)))
+        boto.consell.text = "Amaga els detalls" if obert else "Detalls"
+
+    def _marc_detalls(self, feta: fetes.Feta) -> ttk.Frame:
+        """Afegeix sota la fila un marc retallat (d'alçada fixa) amb els detalls a dins i el retorna."""
+        bloc, boto, _ = self.blocs[feta.dir]
+        marc = ttk.Frame(bloc, height=1)
+        marc.pack(fill="x")
+        marc.pack_propagate(False)
+        self._detalls(marc, feta)
+        self.blocs[feta.dir] = (bloc, boto, marc)
+        self._marca_boto(boto, True)
+        return marc
 
     def _commuta(self, feta: fetes.Feta) -> None:
-        self.desplegades ^= {feta.dir}
-        self.mostra(fetes.llista())
+        self._atura_animacio()
+        if feta.dir not in self.blocs:
+            return
+        anterior, self.oberta = self.oberta, (None if self.oberta == feta.dir else feta.dir)
+        bloc_clicat = self.blocs[feta.dir][0]
+        self.update_idletasks()
+        # On és la fila clicada dins la vista: s'hi ha de quedar mentre canvien les alçades
+        y_vista = bloc_clicat.winfo_y() - self.canvas.canvasy(0)
+        y_final = y_vista
+        canvis = []  # (marc, alçada inicial, alçada final, és per sobre de la fila clicada)
+        if anterior is not None and anterior in self.blocs:
+            bloc, boto, marc = self.blocs[anterior]
+            self._marca_boto(boto, False)
+            if marc is not None:
+                h = marc.winfo_height()
+                marc.pack_propagate(False)
+                marc.configure(height=h)
+                canvis.append((marc, h, 1, bloc.winfo_y() < bloc_clicat.winfo_y()))
+        if self.oberta is not None:
+            marc = self._marc_detalls(feta)
+            self.update_idletasks()
+            alcada = max(1, marc.winfo_children()[0].winfo_reqheight())
+            canvis.append((marc, 1, alcada, False))
+            # Si els detalls no hi caben per sota, la vista baixa fins a mostrar-los, sense amagar la fila
+            alcada_bloc = bloc_clicat.winfo_children()[0].winfo_height() + alcada
+            if y_vista >= 0:
+                y_final = min(y_vista, max(self.canvas.winfo_height() - alcada_bloc, 0))
+        self.update_idletasks()
+        inici = (bloc_clicat.winfo_y(), self.interior.winfo_reqheight(), time.monotonic())
+        self._pas(canvis, inici, y_vista, y_final)
+
+    def _pas(self, canvis, inici: tuple[int, int, float], y_vista: float, y_final: float) -> None:
+        """Un fotograma. Va per temps i no per passos (cada redibuix del tema costa força) i calcula les
+        posicions en lloc de llegir-les, per no forçar cap redibuix a mitges."""
+        y_bloc, total, t0 = inici
+        t = min(1.0, (time.monotonic() - t0) * 1000 / self.DURADA_ANIMACIO_MS)
+        f = 1 - (1 - t) ** 3  # ease-out cúbic
+        for marc, h0, h1, a_sobre in canvis:
+            h = max(1, round(h0 + (h1 - h0) * f))
+            marc.configure(height=h)
+            total += h - h0
+            y_bloc += (h - h0) if a_sobre else 0
+        self.canvas.configure(scrollregion=(0, 0, self.canvas.winfo_width(), total))
+        y = y_bloc - (y_vista + (y_final - y_vista) * f)
+        self.canvas.yview_moveto(max(0.0, y) / total if total else 0)
+        if t < 1:
+            self.animacio = self.after(self.PAS_MS, self._pas, canvis, inici, y_vista, y_final)
+        else:
+            self.animacio = None
+            self._acaba(canvis)
+
+    def _acaba(self, canvis) -> None:
+        for marc, _, h1, *_ in canvis:
+            if h1 > 1:  # desplegat: a partir d'ara s'ajusta sol al contingut
+                marc.pack_propagate(True)
+                continue
+            for dir_, (bloc, boto, m) in self.blocs.items():  # plegat: els detalls ja no calen
+                if m is marc:
+                    self.blocs[dir_] = (bloc, boto, None)
+            marc.destroy()
+
+    def _atura_animacio(self) -> None:
+        """Si hi ha una animació a mitges, la deixa de cop en l'estat final."""
+        if self.animacio is None:
+            return
+        self.after_cancel(self.animacio)
+        self.animacio = None
+        self._acaba([(m, 0, 2 if d == self.oberta else 1) for d, (_, _, m) in self.blocs.items() if m is not None])
 
     def _detalls(self, pare, feta: fetes.Feta) -> None:
         grups = detalls.grups(fetes.stats_de(feta))
         caixa = ttk.Frame(pare, padding=(12, 6, 0, 2))
-        caixa.pack(fill="x")
+        caixa.pack(fill="x", anchor="n")
         if not grups:
             ttk.Label(caixa, text="No hi ha dades d'aquesta cançó.", style="Secundari.TLabel").pack(anchor="w")
             return
