@@ -27,6 +27,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import tkinter.font as tkfont
 import webbrowser
 from dataclasses import replace
 from pathlib import Path
@@ -38,7 +39,7 @@ from ..device import detecta
 from ..models import EstatDescarrega
 from ..worker import Client, EstatWorker, VersioMassaAntiga, Worker
 from . import classificacions, detalls, windows
-from .grafics import Consell, copa, font_icones, text_icona
+from .grafics import Consell, color_separador, copa, fons_boto, font_icones, text_icona
 from .settings import Preferencies, dir_app
 
 log = logging.getLogger("transcriptor.app")
@@ -135,8 +136,13 @@ def _data(epoch: float) -> str:
     return f"{t.tm_mday}/{t.tm_mon}/{t.tm_year}"
 
 
+def _estil(estil: str, opcio: str, estat: str | None = None, defecte: str = "") -> str:
+    """Valor d'una opció d'un estil ttk com a text (lookup pot tornar objectes Tcl)."""
+    return str(ttk.Style().lookup(estil, opcio, [estat] if estat else None) or "") or defecte
+
+
 def _fons() -> str:
-    return ttk.Style().lookup("TFrame", "background") or "#fafafa"
+    return _estil("TFrame", "background", defecte="#fafafa")
 
 
 class Activitat(tk.Canvas):
@@ -180,30 +186,65 @@ class Activitat(tk.Canvas):
 class LlistaFetes(ttk.Frame):
     """Llista desplaçable de les cançons fetes, cadascuna amb els botons de detalls, del visor i d'esborrar.
 
-    Només hi pot haver una cançó desplegada. Desplegar-ne o plegar-ne una no refà la llista: s'anima l'alçada
-    dels detalls i es mou la vista perquè la fila clicada no es desplaci de la pantalla.
+    Tota la llista és un sol canvas dibuixat (textos, línies i botons fets d'imatges opaques), no pas un
+    widget ttk per element: amb el tema sv_ttk cada widget costa uns quants mil·lisegons de redibuixar, i
+    amb una desena de cançons canviar la mida de la finestra trigava gairebé un segon.
+
+    Només hi pot haver una cançó desplegada. Els detalls es dibuixen per sota de tot i les files de sota
+    (cada una amb el seu fons opac) els tapen i es desplacen per destapar-los: així s'anima sense refer res,
+    i la vista es mou perquè la fila clicada no es desplaci de la pantalla.
     """
 
     DURADA_ANIMACIO_MS = 220
     PAS_MS = 15
+    SEPARACIO = 6  # espai a cada costat de la línia entre cançons
+    ESPAI_BOTONS = 4
 
     def __init__(self, pare, app: "App"):
         super().__init__(pare)
         self.app = app
+        self.fetes: list[fetes.Feta] = []
         self.oberta: Path | None = None
-        # Per a cada cançó visible: el bloc, el botó de detalls i el marc dels detalls (si n'hi ha)
-        self.blocs: dict[Path, tuple[ttk.Frame, ttk.Button, ttk.Frame | None]] = {}
+        self.alcades: dict[Path, int] = {}  # alçada visible dels detalls de cada cançó que en té de dibuixats
+        self.completes: dict[Path, int] = {}  # i l'alçada que ocupen desplegats del tot
+        self.ys: list[int] = []  # on és dibuixada cada fila
+        self.consells: list[Consell] = []
+        self.imatges: dict[tuple, tk.PhotoImage] = {}
         self.animacio: str | None = None
+        self.amplada = 0
         self.canvas = tk.Canvas(self, bg=_fons(), highlightthickness=0, height=150)
         barra = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=barra.set)
-        self.interior = ttk.Frame(self.canvas)
-        self.finestra = self.canvas.create_window(0, 0, window=self.interior, anchor="nw")
-        self.interior.bind("<Configure>", lambda _e: self._regio())
-        self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(self.finestra, width=e.width))
+        self.canvas.bind("<Configure>", self._canvi_mida)
         self.canvas.pack(side="left", fill="both", expand=True)
         barra.pack(side="right", fill="y")
         self.bind_all("<MouseWheel>", self._roda, add="+")
+        self._mesures()
+
+    def _mesures(self) -> None:
+        """Colors, fonts i mides dels botons, presos del tema perquè la llista sigui igual que la resta."""
+        self.fons = _fons()
+        self.color_text = _estil("TLabel", "foreground", defecte="#1c1c1c")
+        self.color_secundari = _estil("Secundari.TLabel", "foreground", defecte="#6b6b6b")
+        self.color_linia = color_separador(self.app.fosc, self.fons)
+        self.font_nom = _estil("Canco.TLabel", "font", defecte="TkDefaultFont")
+        self.font_text = _estil("TLabel", "font", defecte="TkDefaultFont")
+        self.amb_icones = bool(self.app.font_icones)
+        self.estil_boto = "Icona.TButton" if self.amb_icones else "TButton"
+        self.font_boto = _estil(self.estil_boto, "font", defecte=self.font_text)
+        self.mesura_nom = tkfont.Font(font=self.font_nom)
+        self.mesura_text = tkfont.Font(font=self.font_text)
+        self.alt_nom = self.mesura_nom.metrics("linespace")
+        self.alt_text = self.mesura_text.metrics("linespace")
+        # La mida dels botons, la d'un botó ttk real amb el mateix estil
+        self.mides_boto: dict[str, tuple[int, int]] = {}
+        for icona in ("desplega", "plega", "visor", "esborra"):
+            b = ttk.Button(self, text=text_icona(icona, self.amb_icones), style=self.estil_boto,
+                           width=3 if self.amb_icones else 0)
+            self.mides_boto[icona] = (b.winfo_reqwidth(), b.winfo_reqheight())
+            b.destroy()
+        self.alt_boto = max(h for _, h in self.mides_boto.values())
+        self.alt_fila = max(self.alt_nom + self.alt_text, self.alt_boto + 6)
 
     def _roda(self, e) -> None:
         if not self.winfo_exists():
@@ -212,144 +253,229 @@ class LlistaFetes(ttk.Frame):
         if sota is not None and str(sota).startswith(str(self)) and self.canvas.yview() != (0.0, 1.0):
             self.canvas.yview_scroll(-1 * (e.delta // 120), "units")
 
-    def _regio(self) -> int:
-        alcada = self.interior.winfo_reqheight()
-        self.canvas.configure(scrollregion=(0, 0, self.canvas.winfo_width(), alcada))
-        return alcada
+    def _canvi_mida(self, e) -> None:
+        if e.width != self.amplada:  # canviar només l'alçada no demana redibuixar res
+            self.amplada = e.width
+            self._atura_animacio()
+            self._dibuixa()
 
     def mostra(self, llista: list[fetes.Feta]) -> None:
         self._atura_animacio()
-        inici = self.canvas.yview()[0]  # en refer la llista (cançó nova, esborrada) no es torna a dalt
-        for w in self.interior.winfo_children():
-            w.destroy()
-        self.blocs.clear()
-        if not llista:
-            self.oberta = None
-            ttk.Label(self.interior, style="Secundari.TLabel", wraplength=420, justify="left",
-                      text="Encara no n'hi ha cap. Quan el worker acabi una cançó, la podràs obrir al visor "
-                           "per veure com ha quedat la lletra i els acords sincronitzats amb la música.",
-                      ).pack(anchor="w", pady=8)
-            self.canvas.yview_moveto(0)
-            return
+        self.fetes = llista
         if self.oberta not in {f.dir for f in llista}:
             self.oberta = None
-        for i, feta in enumerate(llista):
-            if i:
-                ttk.Separator(self.interior).pack(fill="x", pady=6)
-            self._fila(feta)
-        self.update_idletasks()
-        self._regio()
+        inici = self.canvas.yview()[0]  # en refer la llista (cançó nova, esborrada) no es torna a dalt
+        self._dibuixa()
         self.canvas.yview_moveto(inici)
 
-    def _boto(self, pare, icona: str, consell: str, ordre, accent: bool = False) -> ttk.Button:
-        amb_font = bool(self.app.font_icones)
-        # "Icona.Accent.TButton" hereta d'"Accent.TButton": la mateixa aparença amb la font d'icones
-        estil = ("Icona." if amb_font else "") + ("Accent.TButton" if accent else "TButton")
-        b = ttk.Button(pare, text=text_icona(icona, amb_font), style=estil, command=ordre,
-                       width=3 if amb_font else 0)
-        b.consell = Consell(b, consell)
-        return b
+    # ── Dibuix ──────────────────────────────────────────────────────────────
+    def _posicions(self) -> tuple[list[int], int]:
+        ys, y = [], 0
+        for i, feta in enumerate(self.fetes):
+            if i:
+                y += 2 * self.SEPARACIO + 1
+            ys.append(y)
+            y += self.alt_fila + self.alcades.get(feta.dir, 0)
+        return ys, y
 
-    def _fila(self, feta: fetes.Feta) -> None:
-        bloc = ttk.Frame(self.interior)
-        bloc.pack(fill="x")
-        fila = ttk.Frame(bloc)
-        fila.pack(fill="x")
-        # Els botons primer: si no hi cap tot, s'escurça el text i no pas els botons
-        self._boto(fila, "esborra", "Esborra", lambda: self.app.esborra(feta)).pack(side="right")
-        self._boto(fila, "visor", "Obre al visor", lambda: self.app.obre_visor(feta), accent=True
-                   ).pack(side="right", padx=4)
-        boto = self._boto(fila, "desplega", "Detalls", lambda: self._commuta(feta))
-        boto.pack(side="right")
-        text = ttk.Frame(fila)
-        text.pack(side="left", fill="x", expand=True)
-        nom = feta.nom if len(feta.nom) <= 34 else feta.nom[:33] + "…"
-        ttk.Label(text, text=nom, style="Canco.TLabel").pack(anchor="w")
+    def _dibuixa(self) -> None:
+        c = self.canvas
+        for consell in self.consells:
+            consell._amaga()
+        self.consells.clear()
+        c.delete("all")
+        amplada = self.amplada or c.winfo_width()
+        if not self.fetes:
+            self.alcades.clear()
+            c.create_text(0, 8, anchor="nw", width=min(420, max(amplada, 100)), font=self.font_text,
+                          fill=self.color_secundari,
+                          text="Encara no n'hi ha cap. Quan el worker acabi una cançó, la podràs obrir al visor "
+                               "per veure com ha quedat la lletra i els acords sincronitzats amb la música.")
+            c.configure(scrollregion=(0, 0, amplada, 0))
+            return
+        # Primer totes les files com si no hi hagués detalls; després _recoloca les baixa on toca
+        self.alcades, self.completes = {}, {}
+        self.ys, _ = self._posicions()
+        for i, feta in enumerate(self.fetes):
+            self._dibuixa_fila(i, feta, self.ys[i], amplada)
+            if feta.dir == self.oberta:  # sense animació: ja desplegada
+                self.alcades[feta.dir] = self._dibuixa_detalls(i, feta, self.ys[i] + self.alt_fila)
+        # Cortina sota l'última fila: tapa els detalls que encara no s'han de veure
+        c.create_rectangle(0, 0, 0, 0, fill=self.fons, outline="", tags="cortina")
+        self._recoloca()
+
+    def _dibuixa_fila(self, i: int, feta: fetes.Feta, y: int, amplada: int) -> None:
+        c = self.canvas
+        fila = f"f{i}"
+        # Fons opac (amb la línia de sobre): tapa els detalls de la fila anterior mentre es despleguen
+        dalt = y - (2 * self.SEPARACIO + 1 if i else 0)
+        c.create_rectangle(0, dalt, amplada, y + self.alt_fila, fill=self.fons, outline="", tags=fila)
+        if i:
+            c.create_rectangle(0, y - self.SEPARACIO - 1, amplada, y - self.SEPARACIO, fill=self.color_linia,
+                               outline="", tags=fila)
+        # Botons, de dreta a esquerra: si no hi cap tot, s'escurça el text i no pas els botons
+        x = amplada
+        oberta = feta.dir == self.oberta
+        botons = (
+            ("esborra", "Esborra", lambda: self.app.esborra(feta), False),
+            ("visor", "Obre al visor", lambda: self.app.obre_visor(feta), True),
+            ("plega" if oberta else "desplega", "Amaga els detalls" if oberta else "Detalls",
+             lambda: self._commuta(feta), False),
+        )
+        for k, (icona, consell, ordre, accent) in enumerate(botons):
+            w, h = self.mides_boto[icona]
+            x -= w
+            self._boto(f"b{i}_{k}", fila, x, y + (self.alt_fila - h) // 2, w, h, icona, consell, ordre, accent)
+            x -= self.ESPAI_BOTONS
         resum = [_data(feta.data)]
         if feta.segons:
             resum.append(f"{_durada(feta.segons)} de càlcul")
         resum.append(_mida(feta.mida) if feta.te_audio else "YouTube")
-        ttk.Label(text, text=" · ".join(resum), style="Secundari.TLabel").pack(anchor="w")
-        self.blocs[feta.dir] = (bloc, boto, None)
-        if feta.dir == self.oberta:
-            self._marc_detalls(feta).pack_propagate(True)  # sense animació: l'alçada que demanen els detalls
+        lloc = x - 8
+        c.create_text(0, y, anchor="nw", text=_retalla(feta.nom, self.mesura_nom, lloc), font=self.font_nom,
+                      fill=self.color_text, tags=fila)
+        c.create_text(0, y + self.alt_nom, anchor="nw", text=_retalla(" · ".join(resum), self.mesura_text, lloc),
+                      font=self.font_text, fill=self.color_secundari, tags=fila)
 
-    def _marca_boto(self, boto: ttk.Button, obert: bool) -> None:
-        boto.configure(text=text_icona("plega" if obert else "desplega", bool(self.app.font_icones)))
-        boto.consell.text = "Amaga els detalls" if obert else "Detalls"
+    def _imatge(self, accent: bool, estat: str, w: int, h: int):
+        from PIL import ImageTk
 
-    def _marc_detalls(self, feta: fetes.Feta) -> ttk.Frame:
-        """Afegeix sota la fila un marc retallat (d'alçada fixa) amb els detalls a dins i el retorna."""
-        bloc, boto, _ = self.blocs[feta.dir]
-        marc = ttk.Frame(bloc, height=1)
-        marc.pack(fill="x")
-        marc.pack_propagate(False)
-        self._detalls(marc, feta)
-        self.blocs[feta.dir] = (bloc, boto, marc)
-        self._marca_boto(boto, True)
-        return marc
+        clau = (accent, estat, w, h)
+        if clau not in self.imatges:
+            self.imatges[clau] = ImageTk.PhotoImage(fons_boto(self.app.fosc, accent, estat, w, h, self.fons),
+                                                    master=self.canvas)
+        return self.imatges[clau]
 
+    def _boto(self, tag: str, fila: str, x: int, y: int, w: int, h: int, icona: str, consell: str, ordre,
+              accent: bool) -> None:
+        """Botó dibuixat: imatge de fons del tema (repòs, a sobre, premut) i el glif a sobre."""
+        c = self.canvas
+        estil = ("Icona." if self.amb_icones else "") + ("Accent.TButton" if accent else "TButton")
+        colors = {e: _estil(estil, "foreground", s or None, defecte=self.color_text)
+                  for e, s in (("repos", ""), ("sobre", "active"), ("premut", "pressed"))}
+        fons = c.create_image(x, y, anchor="nw", image=self._imatge(accent, "repos", w, h), tags=(fila, tag))
+        # El text no rep el ratolí (state=disabled): així entrar-hi no és sortir de la imatge
+        text = c.create_text(x + w // 2, y + h // 2, text=text_icona(icona, self.amb_icones), font=self.font_boto,
+                             fill=colors["repos"], disabledfill=colors["repos"], state="disabled", tags=(fila, tag))
+
+        def estat(nom: str) -> None:
+            c.itemconfigure(fons, image=self._imatge(accent, nom, w, h))
+            c.itemconfigure(text, disabledfill=colors[nom])
+
+        def deixa_anar(e) -> None:
+            x0, y0, x1, y1 = c.bbox(fons) or (0, 0, 0, 0)
+            dins = x0 <= c.canvasx(e.x) <= x1 and y0 <= c.canvasy(e.y) <= y1
+            estat("sobre" if dins else "repos")
+            if dins:
+                ordre()
+
+        c.tag_bind(fons, "<Enter>", lambda _e: estat("sobre"))
+        c.tag_bind(fons, "<Leave>", lambda _e: estat("repos"))
+        c.tag_bind(fons, "<ButtonPress-1>", lambda _e: estat("premut"))
+        c.tag_bind(fons, "<ButtonRelease-1>", deixa_anar)
+        self.consells.append(Consell(c, consell, tag))
+
+    def _dibuixa_detalls(self, i: int, feta: fetes.Feta, y: int) -> int:
+        """Dibuixa els detalls d'una cançó sota la fila, per sota de tot (les files de sota els tapen).
+        Retorna l'alçada que ocupen."""
+        c = self.canvas
+        tag = f"d{i}"
+        inici = y
+        y += 6
+        x = 12
+        grups = detalls.grups(fetes.stats_de(feta))
+        if not grups:
+            c.create_text(x, y, anchor="nw", text="No hi ha dades d'aquesta cançó.", font=self.font_text,
+                          fill=self.color_secundari, tags=tag)
+            y += self.alt_text
+        else:
+            columna = x + max(self.mesura_text.measure(e) for _, camps in grups for e, _ in camps) + 12
+            for g, (titol, camps) in enumerate(grups):
+                y += 6 if g else 0
+                c.create_text(x, y, anchor="nw", text=titol, font=self.font_nom, fill=self.color_text, tags=tag)
+                y += self.alt_nom + 1
+                for etiqueta, valor in camps:
+                    c.create_text(x, y, anchor="nw", text=etiqueta, font=self.font_text, fill=self.color_secundari,
+                                  tags=tag)
+                    v = c.create_text(columna, y, anchor="nw", text=valor, font=self.font_text, width=260,
+                                      fill=self.color_text, tags=tag)
+                    caixa = c.bbox(v)
+                    y += max(self.alt_text, caixa[3] - caixa[1] if caixa else 0)
+        c.tag_lower(tag)
+        self.completes[feta.dir] = y + 2 - inici
+        return self.completes[feta.dir]
+
+    def _recoloca(self) -> int:
+        """Mou les files a la seva posició segons l'alçada actual dels detalls. Retorna l'alçada total."""
+        ys, total = self._posicions()
+        for i, (abans, ara) in enumerate(zip(self.ys, ys)):
+            if ara != abans:
+                self.canvas.move(f"f{i}", 0, ara - abans)
+                self.canvas.move(f"d{i}", 0, ara - abans)
+        self.ys = ys
+        amplada = self.amplada or self.canvas.winfo_width()
+        self.canvas.coords("cortina", 0, total, amplada, total + 10000)
+        self.canvas.configure(scrollregion=(0, 0, amplada, total))
+        return total
+
+    # ── Desplegar i plegar ──────────────────────────────────────────────────
     def _commuta(self, feta: fetes.Feta) -> None:
         self._atura_animacio()
-        if feta.dir not in self.blocs:
+        index = {f.dir: i for i, f in enumerate(self.fetes)}
+        if feta.dir not in index:
             return
+        i = index[feta.dir]
         anterior, self.oberta = self.oberta, (None if self.oberta == feta.dir else feta.dir)
-        bloc_clicat = self.blocs[feta.dir][0]
-        self.update_idletasks()
         # On és la fila clicada dins la vista: s'hi ha de quedar mentre canvien les alçades
-        y_vista = bloc_clicat.winfo_y() - self.canvas.canvasy(0)
+        y_vista = self.ys[i] - self.canvas.canvasy(0)
         y_final = y_vista
-        canvis = []  # (marc, alçada inicial, alçada final, és per sobre de la fila clicada)
-        if anterior is not None and anterior in self.blocs:
-            bloc, boto, marc = self.blocs[anterior]
-            self._marca_boto(boto, False)
-            if marc is not None:
-                h = marc.winfo_height()
-                marc.pack_propagate(False)
-                marc.configure(height=h)
-                canvis.append((marc, h, 1, bloc.winfo_y() < bloc_clicat.winfo_y()))
+        canvis = {}  # cançó → (alçada inicial, alçada final)
+        if anterior is not None and anterior in index:
+            self._icona_detalls(index[anterior], obert=False)
+            canvis[anterior] = (self.alcades.get(anterior, 0), 0)
         if self.oberta is not None:
-            marc = self._marc_detalls(feta)
-            self.update_idletasks()
-            alcada = max(1, marc.winfo_children()[0].winfo_reqheight())
-            canvis.append((marc, 1, alcada, False))
+            self._icona_detalls(i, obert=True)
+            alcada = self._dibuixa_detalls(i, feta, self.ys[i] + self.alt_fila)
+            self.alcades[feta.dir] = 0
+            canvis[feta.dir] = (0, alcada)
             # Si els detalls no hi caben per sota, la vista baixa fins a mostrar-los, sense amagar la fila
-            alcada_bloc = bloc_clicat.winfo_children()[0].winfo_height() + alcada
             if y_vista >= 0:
-                y_final = min(y_vista, max(self.canvas.winfo_height() - alcada_bloc, 0))
-        self.update_idletasks()
-        inici = (bloc_clicat.winfo_y(), self.interior.winfo_reqheight(), time.monotonic())
-        self._pas(canvis, inici, y_vista, y_final)
+                y_final = min(y_vista, max(self.canvas.winfo_height() - self.alt_fila - alcada, 0))
+        self._pas(canvis, i, y_vista, y_final, time.monotonic())
 
-    def _pas(self, canvis, inici: tuple[int, int, float], y_vista: float, y_final: float) -> None:
-        """Un fotograma. Va per temps i no per passos (cada redibuix del tema costa força) i calcula les
-        posicions en lloc de llegir-les, per no forçar cap redibuix a mitges."""
-        y_bloc, total, t0 = inici
+    def _icona_detalls(self, i: int, obert: bool) -> None:
+        tag = f"b{i}_2"
+        for item in self.canvas.find_withtag(tag):
+            if self.canvas.type(item) == "text":
+                self.canvas.itemconfigure(item, text=text_icona("plega" if obert else "desplega", self.amb_icones))
+        for consell in self.consells:
+            if consell.tag == tag:
+                consell.text = "Amaga els detalls" if obert else "Detalls"
+
+    def _pas(self, canvis: dict, i: int, y_vista: float, y_final: float, t0: float) -> None:
+        """Un fotograma de l'animació. Va per temps i no per passos: sempre dura el mateix."""
         t = min(1.0, (time.monotonic() - t0) * 1000 / self.DURADA_ANIMACIO_MS)
         f = 1 - (1 - t) ** 3  # ease-out cúbic
-        for marc, h0, h1, a_sobre in canvis:
-            h = max(1, round(h0 + (h1 - h0) * f))
-            marc.configure(height=h)
-            total += h - h0
-            y_bloc += (h - h0) if a_sobre else 0
-        self.canvas.configure(scrollregion=(0, 0, self.canvas.winfo_width(), total))
-        y = y_bloc - (y_vista + (y_final - y_vista) * f)
+        for dir_, (h0, h1) in canvis.items():
+            self.alcades[dir_] = round(h0 + (h1 - h0) * f)
+        total = self._recoloca()
+        y = self.ys[i] - (y_vista + (y_final - y_vista) * f)
         self.canvas.yview_moveto(max(0.0, y) / total if total else 0)
         if t < 1:
-            self.animacio = self.after(self.PAS_MS, self._pas, canvis, inici, y_vista, y_final)
+            self.animacio = self.after(self.PAS_MS, self._pas, canvis, i, y_vista, y_final, t0)
         else:
             self.animacio = None
-            self._acaba(canvis)
+            self._acaba()
 
-    def _acaba(self, canvis) -> None:
-        for marc, _, h1, *_ in canvis:
-            if h1 > 1:  # desplegat: a partir d'ara s'ajusta sol al contingut
-                marc.pack_propagate(True)
-                continue
-            for dir_, (bloc, boto, m) in self.blocs.items():  # plegat: els detalls ja no calen
-                if m is marc:
-                    self.blocs[dir_] = (bloc, boto, None)
-            marc.destroy()
+    def _acaba(self) -> None:
+        """Esborra els detalls que han quedat plegats."""
+        index = {f.dir: i for i, f in enumerate(self.fetes)}
+        for dir_ in [d for d in self.alcades if d != self.oberta]:
+            del self.alcades[dir_]
+            self.completes.pop(dir_, None)
+            if dir_ in index:
+                self.canvas.delete(f"d{index[dir_]}")
+        self._recoloca()
 
     def _atura_animacio(self) -> None:
         """Si hi ha una animació a mitges, la deixa de cop en l'estat final."""
@@ -357,26 +483,19 @@ class LlistaFetes(ttk.Frame):
             return
         self.after_cancel(self.animacio)
         self.animacio = None
-        self._acaba([(m, 0, 2 if d == self.oberta else 1) for d, (_, _, m) in self.blocs.items() if m is not None])
+        if self.oberta in self.alcades:
+            self.alcades[self.oberta] = self.completes[self.oberta]
+        self._acaba()
 
-    def _detalls(self, pare, feta: fetes.Feta) -> None:
-        grups = detalls.grups(fetes.stats_de(feta))
-        caixa = ttk.Frame(pare, padding=(12, 6, 0, 2))
-        caixa.pack(fill="x", anchor="n")
-        if not grups:
-            ttk.Label(caixa, text="No hi ha dades d'aquesta cançó.", style="Secundari.TLabel").pack(anchor="w")
-            return
-        fila = 0
-        for titol, camps in grups:
-            ttk.Label(caixa, text=titol, style="Canco.TLabel").grid(row=fila, column=0, columnspan=2, sticky="w",
-                                                                     pady=(6 if fila else 0, 1))
-            fila += 1
-            for etiqueta, valor in camps:
-                ttk.Label(caixa, text=etiqueta, style="Secundari.TLabel").grid(row=fila, column=0, sticky="nw",
-                                                                              padx=(0, 12))
-                ttk.Label(caixa, text=valor, wraplength=260, justify="left").grid(row=fila, column=1, sticky="w")
-                fila += 1
-        caixa.columnconfigure(1, weight=1)
+
+def _retalla(text: str, font: tkfont.Font, amplada: int) -> str:
+    """Escurça el text amb "…" perquè no passi de l'amplada donada (en píxels)."""
+    mesura = font.measure
+    if amplada <= 0 or mesura(text) <= amplada:
+        return text
+    while text and mesura(text + "…") > amplada:
+        text = text[:-1]
+    return text.rstrip() + "…"
 
 
 class App:
@@ -424,6 +543,9 @@ class App:
             import sv_ttk
 
             sv_ttk.set_theme("dark" if self.fosc else "light")
+            # El tema posa els colors i la font base en rebre <<ThemeChanged>>, que arriba més tard: sense
+            # això, els canvas (que no són ttk) es crearien amb el fons clar per defecte
+            self.arrel.tk.call("configure_colors")
         except Exception:  # noqa: BLE001 — sense el tema, tkinter per defecte
             log.warning("No s'ha pogut carregar el tema sv_ttk", exc_info=True)
         self._foto_icona = ImageTk.PhotoImage(_icona(True))

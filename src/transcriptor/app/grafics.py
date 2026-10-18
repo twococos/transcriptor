@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 import tkinter as tk
 import tkinter.font as tkfont
 from functools import cache
+from pathlib import Path
 from tkinter import ttk
 
 # Fonts d'icones de Windows: agafen el color del tema i es veuen nítides a qualsevol escala
@@ -64,18 +66,90 @@ def copa(posicio: int, mida: int = 20):
     return img.resize((mida, mida), Image.LANCZOS)
 
 
+@cache
+def _sprites(fosc: bool) -> dict | None:
+    """Sprites del tema sv_ttk com a imatges PIL (nom → imatge), o None si el tema no hi és."""
+    try:
+        import sv_ttk
+        from PIL import Image
+    except ImportError:
+        return None
+    tema = Path(sv_ttk.__file__).parent / "theme"
+    nom = "dark" if fosc else "light"
+    try:
+        full = Image.open(tema / f"spritesheet_{nom}.png").convert("RGBA")
+        info = (tema / f"sprites_{nom}.tcl").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return {n: full.crop((int(x), int(y), int(x) + int(w), int(y) + int(h)))
+            for n, x, y, w, h in re.findall(r"^\s*([\w-]+) (\d+) (\d+) (\d+) (\d+)", info, re.MULTILINE)}
+
+
+def _estira(sprite, amplada: int, alcada: int, vora: int):
+    """Estira un sprite a la mida demanada mantenint-ne les vores (com fa ttk amb `-border`)."""
+    from PIL import Image
+
+    sw, sh = sprite.size
+    trossos_x = [(0, vora, 0, vora), (vora, sw - vora, vora, amplada - vora), (sw - vora, sw, amplada - vora, amplada)]
+    trossos_y = [(0, vora, 0, vora), (vora, sh - vora, vora, alcada - vora), (sh - vora, sh, alcada - vora, alcada)]
+    sortida = Image.new("RGBA", (amplada, alcada), (0, 0, 0, 0))
+    for sx0, sx1, dx0, dx1 in trossos_x:
+        for sy0, sy1, dy0, dy1 in trossos_y:
+            if dx1 > dx0 and dy1 > dy0:
+                tros = sprite.crop((sx0, sy0, sx1, sy1)).resize((dx1 - dx0, dy1 - dy0), Image.NEAREST)
+                sortida.paste(tros, (dx0, dy0))
+    return sortida
+
+
+def fons_boto(fosc: bool, accent: bool, estat: str, amplada: int, alcada: int, fons: str):
+    """Fons d'un botó del tema (estat: "repos", "sobre" o "premut") ja compost sobre el color de fons.
+
+    Una imatge opaca es dibuixa molt més de pressa que els sprites amb transparència dels botons ttk.
+    """
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGBA", (amplada, alcada), fons)
+    nom = "button-" + ("accent-" if accent else "") + {"repos": "rest", "sobre": "hover", "premut": "pressed"}[estat]
+    sprites = _sprites(fosc)
+    if sprites and nom in sprites:
+        img.alpha_composite(_estira(sprites[nom], amplada, alcada, 4))
+    else:
+        color = ("#005fb8" if accent else ("#2d2d2d" if fosc else "#fdfdfd"))
+        ImageDraw.Draw(img).rounded_rectangle((0, 0, amplada - 1, alcada - 1), radius=4, fill=color,
+                                              outline=None if accent else ("#3d3d3d" if fosc else "#d0d0d0"))
+    return img.convert("RGB")
+
+
+def color_separador(fosc: bool, fons: str) -> str:
+    """Color de la línia dels separadors del tema, compost sobre el fons."""
+    sprites = _sprites(fosc)
+    if not sprites or "sep" not in sprites:
+        return "#3a3a3a" if fosc else "#e5e5e5"
+    from PIL import Image
+
+    img = Image.new("RGBA", (1, 1), fons)
+    s = sprites["sep"]
+    img.alpha_composite(s.crop((s.width // 2, s.height // 2, s.width // 2 + 1, s.height // 2 + 1)))
+    return "#{:02x}{:02x}{:02x}".format(*img.getpixel((0, 0))[:3])
+
+
 class Consell:
-    """Text que apareix en passar el ratolí per sobre d'un widget (tooltip)."""
+    """Text que apareix en passar el ratolí per sobre d'un widget (tooltip).
+
+    Amb `tag`, el widget és un canvas i el consell és per als elements del canvas amb aquesta etiqueta.
+    """
 
     RETARD_MS = 450
 
-    def __init__(self, widget: tk.Widget, text: str):
-        self.widget, self.text = widget, text
+    def __init__(self, widget: tk.Widget, text: str, tag: str | None = None):
+        self.widget, self.text, self.tag = widget, text, tag
         self.finestra: tk.Toplevel | None = None
         self.pendent: str | None = None
-        widget.bind("<Enter>", self._programa, add="+")
-        widget.bind("<Leave>", self._amaga, add="+")
-        widget.bind("<ButtonPress>", self._amaga, add="+")
+        for seq, ordre in (("<Enter>", self._programa), ("<Leave>", self._amaga), ("<ButtonPress>", self._amaga)):
+            if tag:
+                widget.tag_bind(tag, seq, ordre, add="+")
+            else:
+                widget.bind(seq, ordre, add="+")
 
     def _programa(self, _e=None) -> None:
         self._cancel_la()
@@ -87,10 +161,19 @@ class Consell:
             self.pendent = None
 
     def _mostra(self) -> None:
+        self.pendent = None
         if self.finestra or not self.widget.winfo_exists():
             return
-        x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2
-        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        if self.tag:
+            caixa = self.widget.bbox(self.tag)
+            if not caixa:  # l'element ja no hi és (s'ha redibuixat la llista)
+                return
+            x0, _, x1, y1 = caixa
+            x = self.widget.winfo_rootx() + (x0 + x1) // 2 - int(self.widget.canvasx(0))
+            y = self.widget.winfo_rooty() + y1 - int(self.widget.canvasy(0)) + 4
+        else:
+            x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
         self.finestra = tk.Toplevel(self.widget)
         self.finestra.wm_overrideredirect(True)
         self.finestra.attributes("-topmost", True)
