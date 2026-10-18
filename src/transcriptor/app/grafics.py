@@ -85,13 +85,14 @@ def _sprites(fosc: bool) -> dict | None:
             for n, x, y, w, h in re.findall(r"^\s*([\w-]+) (\d+) (\d+) (\d+) (\d+)", info, re.MULTILINE)}
 
 
-def _estira(sprite, amplada: int, alcada: int, vora: int):
+def _estira(sprite, amplada: int, alcada: int, vora: int, vora_y: int | None = None):
     """Estira un sprite a la mida demanada mantenint-ne les vores (com fa ttk amb `-border`)."""
     from PIL import Image
 
+    vx, vy = vora, vora if vora_y is None else vora_y
     sw, sh = sprite.size
-    trossos_x = [(0, vora, 0, vora), (vora, sw - vora, vora, amplada - vora), (sw - vora, sw, amplada - vora, amplada)]
-    trossos_y = [(0, vora, 0, vora), (vora, sh - vora, vora, alcada - vora), (sh - vora, sh, alcada - vora, alcada)]
+    trossos_x = [(0, vx, 0, vx), (vx, sw - vx, vx, amplada - vx), (sw - vx, sw, amplada - vx, amplada)]
+    trossos_y = [(0, vy, 0, vy), (vy, sh - vy, vy, alcada - vy), (sh - vy, sh, alcada - vy, alcada)]
     sortida = Image.new("RGBA", (amplada, alcada), (0, 0, 0, 0))
     for sx0, sx1, dx0, dx1 in trossos_x:
         for sy0, sy1, dy0, dy1 in trossos_y:
@@ -99,6 +100,41 @@ def _estira(sprite, amplada: int, alcada: int, vora: int):
                 tros = sprite.crop((sx0, sy0, sx1, sy1)).resize((dx1 - dx0, dy1 - dy0), Image.NEAREST)
                 sortida.paste(tros, (dx0, dy0))
     return sortida
+
+
+# Sprites del tema que ttk estén per àrees grans: (amplada, alçada, vora horitzontal, vora vertical).
+# ttk no els estira, els enrajola: el centre del marc de les pestanyes (uns 30 px) es copiava milers de
+# vegades a cada redibuix, i només això eren ~130 ms de cada canvi de mida de la finestra.
+SPRITES_GRANS = {
+    "notebook-border": (1000, 1000, 5, 5),  # -border 5
+    "sep": (1000, 10, 0, 0),  # la línia dels separadors (horitzontals)
+    "scrollbar-trough-vert": (12, 1000, 0, 6),  # -border {0 6}; l'amplada ha de quedar igual
+}
+
+
+def accelera_tema(arrel: tk.Misc, fosc: bool) -> list:
+    """Substitueix els sprites de SPRITES_GRANS del tema sv_ttk per versions grans ja estirades, que es
+    dibuixen d'un sol cop. Es veuen igual. Retorna les imatges noves, que s'han de mantenir vives."""
+    from PIL import ImageTk
+
+    sprites = _sprites(fosc)
+    if not sprites:
+        return []
+    tema = "sv_dark" if fosc else "sv_light"
+    guardades = []
+    for nom, (amplada, alcada, vx, vy) in SPRITES_GRANS.items():
+        try:
+            imatge = arrel.tk.globalgetvar(f"ttk::theme::{tema}::I({nom})")
+        except tk.TclError:
+            continue
+        if nom not in sprites:
+            continue
+        nova = ImageTk.PhotoImage(_estira(sprites[nom], amplada, alcada, vx, vy), master=arrel)
+        arrel.tk.call(imatge, "blank")
+        arrel.tk.call(imatge, "configure", "-width", 0, "-height", 0)  # que agafi la mida nova
+        arrel.tk.call(imatge, "copy", nova)
+        guardades.append(nova)
+    return guardades
 
 
 def fons_boto(fosc: bool, accent: bool, estat: str, amplada: int, alcada: int, fons: str):

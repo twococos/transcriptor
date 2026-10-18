@@ -39,7 +39,7 @@ from ..device import detecta
 from ..models import EstatDescarrega
 from ..worker import Client, EstatWorker, VersioMassaAntiga, Worker
 from . import classificacions, detalls, windows
-from .grafics import Consell, color_separador, copa, fons_boto, font_icones, text_icona
+from .grafics import Consell, accelera_tema, color_separador, copa, fons_boto, font_icones, text_icona
 from .settings import Preferencies, dir_app
 
 log = logging.getLogger("transcriptor.app")
@@ -223,7 +223,8 @@ class LlistaFetes(ttk.Frame):
 
     def _mesures(self) -> None:
         """Colors, fonts i mides dels botons, presos del tema perquè la llista sigui igual que la resta."""
-        self.fons = _fons()
+        # En hexadecimal: sense el tema, el fons és un color de sistema ("SystemButtonFace") que PIL no entén
+        self.fons = "#{:02x}{:02x}{:02x}".format(*(v // 257 for v in self.winfo_rgb(_fons())))
         self.color_text = _estil("TLabel", "foreground", defecte="#1c1c1c")
         self.color_secundari = _estil("Secundari.TLabel", "foreground", defecte="#6b6b6b")
         self.color_linia = color_separador(self.app.fosc, self.fons)
@@ -546,6 +547,7 @@ class App:
             # El tema posa els colors i la font base en rebre <<ThemeChanged>>, que arriba més tard: sense
             # això, els canvas (que no són ttk) es crearien amb el fons clar per defecte
             self.arrel.tk.call("configure_colors")
+            self._sprites_grans = accelera_tema(self.arrel, self.fosc)
         except Exception:  # noqa: BLE001 — sense el tema, tkinter per defecte
             log.warning("No s'ha pogut carregar el tema sv_ttk", exc_info=True)
         self._foto_icona = ImageTk.PhotoImage(_icona(True))
