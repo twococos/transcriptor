@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import re
 import tkinter as tk
 import tkinter.font as tkfont
@@ -134,26 +135,182 @@ def accelera_tema(arrel: tk.Misc, fosc: bool) -> list:
         arrel.tk.call(imatge, "configure", "-width", 0, "-height", 0)  # que agafi la mida nova
         arrel.tk.call(imatge, "copy", nova)
         guardades.append(nova)
+    for element, (estil, estats, opcions, mida) in ELEMENTS_RAPIDS.items():
+        guardades += _element_rapid(arrel, sprites, element, estil, estats, opcions, mida)
     return guardades
 
 
-def fons_boto(fosc: bool, accent: bool, estat: str, amplada: int, alcada: int, fons: str):
-    """Fons d'un botó del tema (estat: "repos", "sobre" o "premut") ja compost sobre el color de fons.
+def _estats_boto(prefix: str) -> list[tuple[str, str]]:
+    return [("", f"{prefix}-rest"), ("selected disabled", f"{prefix}-dis"), ("disabled", f"{prefix}-dis"),
+            ("selected", f"{prefix}-rest"), ("pressed", f"{prefix}-pressed"),
+            ("active focus", f"{prefix}-focus-hover"), ("active", f"{prefix}-hover"), ("focus", f"{prefix}-focus")]
 
-    Una imatge opaca es dibuixa molt més de pressa que els sprites amb transparència dels botons ttk.
-    """
+
+# Elements del tema amb sprites petits i vora, que no es poden fer grans sense fer gran l'element (en pren
+# la mida mínima): es creen elements nous amb els sprites ja estirats i `-width 0 -height 0`, amb els
+# mateixos estats i opcions que a sv_ttk/theme/*.tcl, i se substitueixen a la disposició de l'estil.
+# element → (estil, [(estats, sprite)], opcions de l'element, mida dels sprites estirats)
+ELEMENTS_RAPIDS = {
+    "Notebook.tab": ("TNotebook.Tab", [("", "tab-rest"), ("selected", "tab-selected"), ("active", "tab-hover")],
+                     {"border": 13, "padding": (16, 14, 16, 6), "height": 32}, (600, 32)),
+    "Button.button": ("TButton", _estats_boto("button"), {"border": 4, "sticky": "nsew"}, (600, 120)),
+    "AccentButton.button": ("Accent.TButton", _estats_boto("button-accent"), {"border": 4, "sticky": "nsew"},
+                            (600, 120)),
+}
+
+
+def _element_rapid(arrel: tk.Misc, sprites: dict, element: str, estil_ttk: str, estats: list[tuple[str, str]],
+                   opcions: dict, mida: tuple[int, int]) -> list:
+    from PIL import ImageTk
+
+    if not all(s in sprites for _, s in estats):
+        return []
+    vora = opcions["border"]
+    imatges = {s: ImageTk.PhotoImage(_estira(sprites[s], *mida, vora), master=arrel) for _, s in estats}
+    nou = f"Rapid.{element}"
+    estil = ttk.Style(arrel)
+    try:
+        estil.element_create(nou, "image", imatges[estats[0][1]],
+                             *((e, imatges[s]) for e, s in estats[1:]), **{"width": 0, "height": 0, **opcions})
+    except tk.TclError:  # ja creat (el tema només es carrega un cop, però per si de cas)
+        return []
+
+    def canvia(disposicio):
+        return [(nou if nom == element else nom,
+                 {**op, "children": canvia(op["children"])} if "children" in op else op)
+                for nom, op in disposicio]
+
+    estil.layout(estil_ttk, canvia(estil.layout(estil_ttk)))
+    return list(imatges.values())
+
+
+def opcio_estil(estil: str, opcio: str, estat: str | None = None, defecte: str = "") -> str:
+    """Valor d'una opció d'un estil ttk com a text (lookup pot tornar objectes Tcl)."""
+    return str(ttk.Style().lookup(estil, opcio, [estat] if estat else None) or "") or defecte
+
+
+def color_hex(widget: tk.Misc, color: str) -> str:
+    """Qualsevol color de Tk en hexadecimal (sense el tema, el fons és "SystemButtonFace", que PIL no entén)."""
+    return "#{:02x}{:02x}{:02x}".format(*(v // 257 for v in widget.winfo_rgb(color)))
+
+
+def sprite_opac(fosc: bool, nom: str, amplada: int, alcada: int, vora: int, fons: str):
+    """Un sprite del tema estirat a la mida donada i compost sobre el color de fons (imatge PIL opaca, o None
+    sense el tema). Una imatge opaca d'un sol tros es dibuixa molt més de pressa que l'element ttk."""
+    from PIL import Image
+
+    sprites = _sprites(fosc)
+    if not sprites or nom not in sprites:
+        return None
+    img = Image.new("RGBA", (amplada, alcada), fons)
+    img.alpha_composite(_estira(sprites[nom], amplada, alcada, vora))
+    return img.convert("RGB")
+
+
+ESTATS_BOTO = {"repos": "rest", "sobre": "hover", "premut": "pressed", "desactivat": "dis"}
+
+
+def fons_boto(fosc: bool, accent: bool, estat: str, amplada: int, alcada: int, fons: str):
+    """Fons d'un botó del tema (estat: "repos", "sobre", "premut" o "desactivat") compost sobre el fons."""
     from PIL import Image, ImageDraw
 
-    img = Image.new("RGBA", (amplada, alcada), fons)
-    nom = "button-" + ("accent-" if accent else "") + {"repos": "rest", "sobre": "hover", "premut": "pressed"}[estat]
-    sprites = _sprites(fosc)
-    if sprites and nom in sprites:
-        img.alpha_composite(_estira(sprites[nom], amplada, alcada, 4))
-    else:
+    nom = "button-" + ("accent-" if accent else "") + ESTATS_BOTO[estat]
+    img = sprite_opac(fosc, nom, amplada, alcada, 4, fons)
+    if img is None:
+        img = Image.new("RGB", (amplada, alcada), fons)
         color = ("#005fb8" if accent else ("#2d2d2d" if fosc else "#fdfdfd"))
         ImageDraw.Draw(img).rounded_rectangle((0, 0, amplada - 1, alcada - 1), radius=4, fill=color,
                                               outline=None if accent else ("#3d3d3d" if fosc else "#d0d0d0"))
-    return img.convert("RGB")
+    return img
+
+
+def mida_boto(pare: tk.Misc, text: str, estil: str, **opcions) -> tuple[int, int]:
+    """La mida que tindria un ttk.Button real amb aquest text i estil."""
+    b = ttk.Button(pare, text=text, style=estil, **opcions)
+    mida = (b.winfo_reqwidth(), b.winfo_reqheight())
+    b.destroy()
+    return mida
+
+
+_numeros = itertools.count()
+SEQUENCIES_BOTO = ("<Enter>", "<Leave>", "<ButtonPress-1>", "<ButtonRelease-1>")
+
+
+def alcada_etiqueta(pare: tk.Misc, estil: str) -> int:
+    """L'alçada d'un ttk.Label d'una línia amb aquest estil (no és ben bé la de la font: un píxel menys)."""
+    e = ttk.Label(pare, text="Àg", style=estil)
+    alcada = e.winfo_reqheight()
+    e.destroy()
+    return alcada
+
+
+class BotoCanvas:
+    """Botó del tema dibuixat dins un canvas: la imatge de fons (repòs, a sobre, premut o desactivat) i el
+    text o la icona a sobre. Es veu com un ttk.Button però es redibuixa molt més de pressa (vegeu
+    accelera_tema). `tags` s'afegeixen als dos elements, per moure'ls junts."""
+
+    def __init__(self, canvas: tk.Canvas, x: int, y: int, amplada: int, alcada: int, text: str, estil: str,
+                 ordre, fosc: bool, fons: str, consell: str | None = None, tags: tuple = (), actiu: bool = True):
+        self.c, self.amplada, self.alcada, self.ordre = canvas, amplada, alcada, ordre
+        self.fosc, self.fons, self.actiu = fosc, fons, actiu
+        self.accent = "Accent" in estil
+        self.tag = f"boto{next(_numeros)}"
+        defecte = opcio_estil("TButton", "foreground", defecte="#1c1c1c")
+        self.colors = {e: opcio_estil(estil, "foreground", s, defecte=defecte)
+                       for e, s in (("repos", None), ("sobre", "active"), ("premut", "pressed"),
+                                    ("desactivat", "disabled"))}
+        estat = "repos" if actiu else "desactivat"
+        self.fons_id = canvas.create_image(x, y, anchor="nw", image=self._imatge(estat), tags=(*tags, self.tag))
+        # El text no rep el ratolí (state=disabled): així entrar-hi no és sortir de la imatge
+        # El text dels botons ttk queda mig píxel amunt: el farciment és de 2 a dalt i 3 a baix
+        self.text_id = canvas.create_text(x + amplada // 2, y + (alcada - 1) // 2, text=text, state="disabled",
+                                          font=opcio_estil(estil, "font", defecte="TkDefaultFont"),
+                                          disabledfill=self.colors[estat], tags=(*tags, self.tag))
+        accions = (lambda _e: self._estat("sobre"), lambda _e: self._estat("repos"),
+                   lambda _e: self._estat("premut"), self._deixa_anar)
+        # Els identificadors, per poder-ne esborrar les comandes Tcl en destruir el botó
+        self.lligams = [(seq, canvas.tag_bind(self.fons_id, seq, accio)) for seq, accio in zip(SEQUENCIES_BOTO, accions)]
+        self.consell = Consell(canvas, consell, self.tag) if consell else None
+
+    def _imatge(self, estat: str):
+        from PIL import ImageTk
+
+        cache = self.c.__dict__.setdefault("_imatges_boto", {})  # una per canvas: hi han de quedar vives
+        clau = (self.accent, estat, self.amplada, self.alcada)
+        if clau not in cache:
+            cache[clau] = ImageTk.PhotoImage(
+                fons_boto(self.fosc, self.accent, estat, self.amplada, self.alcada, self.fons), master=self.c)
+        return cache[clau]
+
+    def _estat(self, nom: str) -> None:
+        nom = nom if self.actiu else "desactivat"
+        self.c.itemconfigure(self.fons_id, image=self._imatge(nom))
+        self.c.itemconfigure(self.text_id, disabledfill=self.colors[nom])
+
+    def _deixa_anar(self, e) -> None:
+        x0, y0, x1, y1 = self.c.bbox(self.fons_id) or (0, 0, 0, 0)
+        dins = x0 <= self.c.canvasx(e.x) <= x1 and y0 <= self.c.canvasy(e.y) <= y1
+        self._estat("sobre" if dins else "repos")
+        if dins and self.actiu:
+            self.ordre()
+
+    def posa_text(self, text: str) -> None:
+        self.c.itemconfigure(self.text_id, text=text)
+
+    def ratoli_a_sobre(self) -> None:
+        """Si el ratolí ja hi és a sobre (el botó s'acaba de redibuixar), es mostra com a tal."""
+        x = self.c.canvasx(self.c.winfo_pointerx() - self.c.winfo_rootx())
+        y = self.c.canvasy(self.c.winfo_pointery() - self.c.winfo_rooty())
+        x0, y0, x1, y1 = self.c.bbox(self.fons_id) or (0, 0, -1, -1)
+        if x0 <= x <= x1 and y0 <= y <= y1:
+            self._estat("sobre")
+
+    def destrueix(self) -> None:
+        """Treu les vinculacions d'esdeveniments (Tk les guarda encara que s'esborrin els elements)."""
+        for seq, funcio in self.lligams:
+            self.c.tag_unbind(self.fons_id, seq, funcio)
+        if self.consell:
+            self.consell.desvincula()
 
 
 def color_separador(fosc: bool, fons: str) -> str:
@@ -181,9 +338,10 @@ class Consell:
         self.widget, self.text, self.tag = widget, text, tag
         self.finestra: tk.Toplevel | None = None
         self.pendent: str | None = None
-        for seq, ordre in (("<Enter>", self._programa), ("<Leave>", self._amaga), ("<ButtonPress>", self._amaga)):
+        self.lligams = []
+        for seq, ordre in (("<Enter>", self._programa), ("<Leave>", self.amaga), ("<ButtonPress>", self.amaga)):
             if tag:
-                widget.tag_bind(tag, seq, ordre, add="+")
+                self.lligams.append((seq, widget.tag_bind(tag, seq, ordre, add="+")))
             else:
                 widget.bind(seq, ordre, add="+")
 
@@ -217,7 +375,14 @@ class Consell:
         self.finestra.update_idletasks()
         self.finestra.geometry(f"+{x - self.finestra.winfo_width() // 2}+{y}")
 
-    def _amaga(self, _e=None) -> None:
+    def desvincula(self) -> None:
+        """Per als consells d'elements d'un canvas que s'esborren: treu les vinculacions de l'etiqueta."""
+        self.amaga()
+        for seq, funcio in self.lligams:  # també n'esborra la comanda Tcl
+            self.widget.tag_unbind(self.tag, seq, funcio)
+        self.lligams = []
+
+    def amaga(self, _e=None) -> None:
         self._cancel_la()
         if self.finestra:
             self.finestra.destroy()

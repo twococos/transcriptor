@@ -39,7 +39,20 @@ from ..device import detecta
 from ..models import EstatDescarrega
 from ..worker import Client, EstatWorker, VersioMassaAntiga, Worker
 from . import classificacions, detalls, windows
-from .grafics import Consell, accelera_tema, color_separador, copa, fons_boto, font_icones, text_icona
+from .grafics import (
+    BotoCanvas,
+    Consell,
+    accelera_tema,
+    alcada_etiqueta,
+    color_hex,
+    color_separador,
+    copa,
+    font_icones,
+    mida_boto,
+    opcio_estil,
+    sprite_opac,
+    text_icona,
+)
 from .settings import Preferencies, dir_app
 
 log = logging.getLogger("transcriptor.app")
@@ -136,13 +149,8 @@ def _data(epoch: float) -> str:
     return f"{t.tm_mday}/{t.tm_mon}/{t.tm_year}"
 
 
-def _estil(estil: str, opcio: str, estat: str | None = None, defecte: str = "") -> str:
-    """Valor d'una opció d'un estil ttk com a text (lookup pot tornar objectes Tcl)."""
-    return str(ttk.Style().lookup(estil, opcio, [estat] if estat else None) or "") or defecte
-
-
 def _fons() -> str:
-    return _estil("TFrame", "background", defecte="#fafafa")
+    return opcio_estil("TFrame", "background", defecte="#fafafa")
 
 
 class Activitat(tk.Canvas):
@@ -183,6 +191,187 @@ class Activitat(tk.Canvas):
         self.after(40 if rapid else (90 if self.mode != "aturat" else 500), self._anima)
 
 
+class Capcalera(tk.Canvas):
+    """La part de dalt de la pestanya d'estat (animació, estat, botó d'activar, comptadors, dispositiu, podi) i
+    la barra "Les teves cançons", dibuixades en un sol canvas pel mateix motiu que LlistaFetes: cada widget
+    ttk del tema costa de redibuixar. L'App hi posa les dades amb `posa(...)` i només es redibuixa si canvien.
+    """
+
+    ESPAI_ANIMACIO = 14
+
+    def __init__(self, pare, app: "App"):
+        super().__init__(pare, bg=_fons(), highlightthickness=0, height=1)
+        self.app = app
+        self.activitat = Activitat(self, app.fosc)
+        self.finestra_animacio = self.create_window(0, 0, window=self.activitat, anchor="nw")
+        self.dades: dict = {"titol": "Aturat", "detall": "", "boto": ("Activa", True), "progres": None,
+                            "comptadors": "", "dispositiu": "", "podi": None, "total": None}
+        self.dibuixat: tuple | None = None
+        self.amplada = 0
+        self.botons: list[BotoCanvas] = []
+        self.consell_podi: Consell | None = None
+        self.lligams_podi: list[tuple[str, str]] = []
+        self.imatges: dict = {}
+        self.fons = color_hex(self, _fons())
+        self.color_text = opcio_estil("TLabel", "foreground", defecte="#1c1c1c")
+        self.color_secundari = opcio_estil("Secundari.TLabel", "foreground", defecte="#6b6b6b")
+        self.color_accent = opcio_estil("Accent.TLabel", "foreground", defecte=TARONJA)
+        self.color_linia = color_separador(app.fosc, self.fons)
+        self.font_text = opcio_estil("TLabel", "font", defecte="TkDefaultFont")
+        self.font_estat = opcio_estil("Estat.TLabel", "font", defecte=self.font_text)
+        self.font_seccio = opcio_estil("Seccio.TLabel", "font", defecte=self.font_text)
+        self.font_accent = opcio_estil("Accent.TLabel", "font", defecte=self.font_text)
+        self.alt_text = alcada_etiqueta(self, "Secundari.TLabel")
+        self.alt_estat = alcada_etiqueta(self, "Estat.TLabel")
+        self.alt_seccio = alcada_etiqueta(self, "Seccio.TLabel")
+        self.bind("<Configure>", self._canvi_mida)
+
+    def posa(self, **dades) -> None:
+        self.dades.update(dades)
+        self._dibuixa()
+
+    def _canvi_mida(self, e) -> None:
+        if e.width != self.amplada:
+            self.amplada = e.width
+            self._dibuixa(forca=True)
+
+    def _imatge(self, clau: tuple, crea):
+        from PIL import ImageTk
+
+        if clau not in self.imatges:
+            self.imatges[clau] = ImageTk.PhotoImage(crea(), master=self)
+        return self.imatges[clau]
+
+    @staticmethod
+    def _mig(alt_caixa: int, alt_etiqueta: int) -> int:
+        """On va el centre d'un text centrat verticalment en una caixa, arrodonit com ho fa una etiqueta ttk."""
+        return (alt_caixa - alt_etiqueta) // 2 + alt_etiqueta // 2
+
+    def _mida_boto(self, text: str, estil: str) -> tuple[int, int]:
+        clau = ("mida", text, estil)
+        if clau not in self.imatges:
+            self.imatges[clau] = mida_boto(self, text, estil)
+        return self.imatges[clau]
+
+    def _boto(self, x: int, y: int, text: str, estil: str, ordre, actiu: bool = True, ipadx: int = 0) -> int:
+        w, h = self._mida_boto(text, estil)
+        self.botons.append(BotoCanvas(self, x, y, w + 2 * ipadx, h, text, estil, ordre, self.app.fosc, self.fons,
+                                      actiu=actiu))
+        return w + 2 * ipadx
+
+    def _dibuixa(self, forca: bool = False) -> None:
+        clau = (self.amplada, repr(sorted(self.dades.items())))
+        if clau == self.dibuixat and not forca:
+            return
+        self.dibuixat = clau
+        for b in self.botons:
+            b.destrueix()
+        self.botons.clear()
+        if self.consell_podi:
+            self.consell_podi.desvincula()
+            self.consell_podi = None
+        for seq, funcio in self.lligams_podi:
+            self.tag_unbind("podi", seq, funcio)
+        self.lligams_podi = []
+        # Tot menys l'animació, que és un widget: treure-la i tornar-la a posar la faria parpellejar
+        for item in self.find_all():
+            if item != self.finestra_animacio:
+                self.delete(item)
+        d, amplada = self.dades, self.amplada or self.winfo_width()
+
+        # Animació a l'esquerra i, al costat, l'estat amb el detall a sota (centrats verticalment)
+        x = Activitat.AMPLE + self.ESPAI_ANIMACIO
+        detall = self.create_text(x, 0, anchor="nw", text=d["detall"], width=360, font=self.font_text,
+                                  fill=self.color_secundari)
+        caixa = self.bbox(detall)
+        alt_detall = max(self.alt_text, caixa[3] - caixa[1]) if caixa and d["detall"] else self.alt_text
+        alt_textos = self.alt_estat + alt_detall
+        y_textos = max(0, (Activitat.ALT - alt_textos) // 2)
+        self.create_text(x, y_textos + self.alt_estat // 2, anchor="w", text=d["titol"], font=self.font_estat,
+                         fill=self.color_text)
+        self.coords(detall, x, y_textos + self.alt_estat)
+        y = max(Activitat.ALT, alt_textos)
+
+        if d["progres"] is not None:  # només mentre es baixen els models
+            fraccio, text = d["progres"]
+            y += 12
+            w = max(amplada, 10)
+            fons = sprite_opac(self.app.fosc, "progressbar-trough-hor", w, 5, 1, self.fons)
+            if fons is not None:
+                self.create_image(0, y, anchor="nw", image=self._imatge(("solc", w), lambda: fons))
+            else:
+                self.create_rectangle(0, y + 2, w, y + 3, fill=self.color_linia, outline="")
+            ple = int(w * min(max(fraccio, 0.0), 1.0))
+            if ple >= 4:
+                barra = sprite_opac(self.app.fosc, "progressbar-bar-hor", ple, 5, 2, self.fons)
+                if barra is not None:  # canvia cada segon: no es guarda a la memòria cau
+                    from PIL import ImageTk
+
+                    self.imatges["barra"] = ImageTk.PhotoImage(barra, master=self)
+                    self.create_image(0, y, anchor="nw", image=self.imatges["barra"])
+                else:
+                    self.create_rectangle(0, y + 1, ple, y + 4, fill="#005fb8", outline="")
+            y += 5 + 4
+            self.create_text(0, y + self.alt_text // 2, anchor="w", text=text, font=self.font_text,
+                             fill=self.color_secundari)
+            y += self.alt_text
+
+        # Botó d'activar i, al costat, els comptadors de la sessió
+        y += 14
+        text, actiu = d["boto"]
+        _, alt_boto = self._mida_boto(text, "Accent.TButton")
+        w = self._boto(0, y, text, "Accent.TButton", self.app.commuta, actiu=actiu, ipadx=18)
+        self.create_text(w + 12, y + self._mig(alt_boto, self.alt_text), anchor="w", text=d["comptadors"], font=self.font_text,
+                         fill=self.color_secundari)
+        y += alt_boto + 8
+        self.create_text(0, y + self.alt_text // 2, anchor="w", text=d["dispositiu"], font=self.font_text,
+                         fill=self.color_secundari)
+        y += self.alt_text
+
+        if d["podi"] is not None:  # al podi d'alguna classificació: la copa i on (clicar-hi porta a la pestanya)
+            posicio, text, consell = d["podi"]
+            y += 6
+            from PIL import Image
+
+            def crea_copa():
+                img = Image.new("RGBA", (18, 18), self.fons)
+                img.alpha_composite(copa(posicio, 18))
+                return img.convert("RGB")
+
+            alt = max(18, self.alt_text)
+            self.create_image(0, y + alt // 2, anchor="w", image=self._imatge(("copa", posicio), crea_copa),
+                              tags="podi")
+            self.create_text(18 + 6, y + alt // 2, anchor="w", text=text, font=self.font_accent,
+                             fill=self.color_accent, tags="podi")
+            accions = (("<Enter>", lambda _e: self.configure(cursor="hand2")),
+                       ("<Leave>", lambda _e: self.configure(cursor="")),
+                       ("<Button-1>", lambda _e: self.app.pestanyes.select(self.app.pestanya_classificacions)))
+            self.lligams_podi = [(seq, self.tag_bind("podi", seq, accio)) for seq, accio in accions]
+            self.consell_podi = Consell(self, consell, "podi")
+            y += alt
+        else:
+            self.configure(cursor="")
+
+        # Separador i la barra "Les teves cançons" (amb el total i el botó d'esborrar-les a la dreta)
+        y += 14
+        self.create_rectangle(0, y, amplada, y + 1, fill=self.color_linia, outline="")
+        y += 1 + 14
+        w_boto, alt_boto = self._mida_boto("Esborra-les totes", "TButton")
+        alt_barra = max(self.alt_seccio, alt_boto)
+        self.create_text(0, y + self._mig(alt_barra, self.alt_seccio), anchor="w", text="Les teves cançons", font=self.font_seccio,
+                         fill=self.color_text)
+        if d["total"] is not None:
+            self._boto(amplada - w_boto, y + (alt_barra - alt_boto) // 2, "Esborra-les totes", "TButton",
+                       self.app.esborra_totes)
+            self.create_text(amplada - w_boto - 8, y + self._mig(alt_barra, self.alt_text), anchor="e", text=d["total"],
+                             font=self.font_text, fill=self.color_secundari)
+        y += alt_barra + 6
+        if int(self.cget("height")) != y:
+            self.configure(height=y)
+        for b in self.botons:
+            b.ratoli_a_sobre()
+
+
 class LlistaFetes(ttk.Frame):
     """Llista desplaçable de les cançons fetes, cadascuna amb els botons de detalls, del visor i d'esborrar.
 
@@ -208,8 +397,7 @@ class LlistaFetes(ttk.Frame):
         self.alcades: dict[Path, int] = {}  # alçada visible dels detalls de cada cançó que en té de dibuixats
         self.completes: dict[Path, int] = {}  # i l'alçada que ocupen desplegats del tot
         self.ys: list[int] = []  # on és dibuixada cada fila
-        self.consells: list[Consell] = []
-        self.imatges: dict[tuple, tk.PhotoImage] = {}
+        self.botons: dict[tuple[int, int], BotoCanvas] = {}  # (fila, 0 esborra / 1 visor / 2 detalls)
         self.animacio: str | None = None
         self.amplada = 0
         self.canvas = tk.Canvas(self, bg=_fons(), highlightthickness=0, height=150)
@@ -223,27 +411,22 @@ class LlistaFetes(ttk.Frame):
 
     def _mesures(self) -> None:
         """Colors, fonts i mides dels botons, presos del tema perquè la llista sigui igual que la resta."""
-        # En hexadecimal: sense el tema, el fons és un color de sistema ("SystemButtonFace") que PIL no entén
-        self.fons = "#{:02x}{:02x}{:02x}".format(*(v // 257 for v in self.winfo_rgb(_fons())))
-        self.color_text = _estil("TLabel", "foreground", defecte="#1c1c1c")
-        self.color_secundari = _estil("Secundari.TLabel", "foreground", defecte="#6b6b6b")
+        self.fons = color_hex(self, _fons())
+        self.color_text = opcio_estil("TLabel", "foreground", defecte="#1c1c1c")
+        self.color_secundari = opcio_estil("Secundari.TLabel", "foreground", defecte="#6b6b6b")
         self.color_linia = color_separador(self.app.fosc, self.fons)
-        self.font_nom = _estil("Canco.TLabel", "font", defecte="TkDefaultFont")
-        self.font_text = _estil("TLabel", "font", defecte="TkDefaultFont")
+        self.font_nom = opcio_estil("Canco.TLabel", "font", defecte="TkDefaultFont")
+        self.font_text = opcio_estil("TLabel", "font", defecte="TkDefaultFont")
         self.amb_icones = bool(self.app.font_icones)
         self.estil_boto = "Icona.TButton" if self.amb_icones else "TButton"
-        self.font_boto = _estil(self.estil_boto, "font", defecte=self.font_text)
         self.mesura_nom = tkfont.Font(font=self.font_nom)
         self.mesura_text = tkfont.Font(font=self.font_text)
-        self.alt_nom = self.mesura_nom.metrics("linespace")
-        self.alt_text = self.mesura_text.metrics("linespace")
+        self.alt_nom = alcada_etiqueta(self, "Canco.TLabel")
+        self.alt_text = alcada_etiqueta(self, "Secundari.TLabel")
         # La mida dels botons, la d'un botó ttk real amb el mateix estil
-        self.mides_boto: dict[str, tuple[int, int]] = {}
-        for icona in ("desplega", "plega", "visor", "esborra"):
-            b = ttk.Button(self, text=text_icona(icona, self.amb_icones), style=self.estil_boto,
-                           width=3 if self.amb_icones else 0)
-            self.mides_boto[icona] = (b.winfo_reqwidth(), b.winfo_reqheight())
-            b.destroy()
+        self.mides_boto = {icona: mida_boto(self, text_icona(icona, self.amb_icones), self.estil_boto,
+                                            width=3 if self.amb_icones else 0)
+                           for icona in ("desplega", "plega", "visor", "esborra")}
         self.alt_boto = max(h for _, h in self.mides_boto.values())
         self.alt_fila = max(self.alt_nom + self.alt_text, self.alt_boto + 6)
 
@@ -281,9 +464,9 @@ class LlistaFetes(ttk.Frame):
 
     def _dibuixa(self) -> None:
         c = self.canvas
-        for consell in self.consells:
-            consell._amaga()
-        self.consells.clear()
+        for boto in self.botons.values():
+            boto.destrueix()
+        self.botons.clear()
         c.delete("all")
         amplada = self.amplada or c.winfo_width()
         if not self.fetes:
@@ -326,55 +509,21 @@ class LlistaFetes(ttk.Frame):
         for k, (icona, consell, ordre, accent) in enumerate(botons):
             w, h = self.mides_boto[icona]
             x -= w
-            self._boto(f"b{i}_{k}", fila, x, y + (self.alt_fila - h) // 2, w, h, icona, consell, ordre, accent)
+            estil = ("Icona." if self.amb_icones else "") + ("Accent.TButton" if accent else "TButton")
+            self.botons[(i, k)] = BotoCanvas(c, x, y + (self.alt_fila - h) // 2, w, h,
+                                             text_icona(icona, self.amb_icones), estil, ordre, self.app.fosc,
+                                             self.fons, consell, tags=(fila,))
             x -= self.ESPAI_BOTONS
         resum = [_data(feta.data)]
         if feta.segons:
             resum.append(f"{_durada(feta.segons)} de càlcul")
         resum.append(_mida(feta.mida) if feta.te_audio else "YouTube")
         lloc = x - 8
-        c.create_text(0, y, anchor="nw", text=_retalla(feta.nom, self.mesura_nom, lloc), font=self.font_nom,
-                      fill=self.color_text, tags=fila)
-        c.create_text(0, y + self.alt_nom, anchor="nw", text=_retalla(" · ".join(resum), self.mesura_text, lloc),
-                      font=self.font_text, fill=self.color_secundari, tags=fila)
-
-    def _imatge(self, accent: bool, estat: str, w: int, h: int):
-        from PIL import ImageTk
-
-        clau = (accent, estat, w, h)
-        if clau not in self.imatges:
-            self.imatges[clau] = ImageTk.PhotoImage(fons_boto(self.app.fosc, accent, estat, w, h, self.fons),
-                                                    master=self.canvas)
-        return self.imatges[clau]
-
-    def _boto(self, tag: str, fila: str, x: int, y: int, w: int, h: int, icona: str, consell: str, ordre,
-              accent: bool) -> None:
-        """Botó dibuixat: imatge de fons del tema (repòs, a sobre, premut) i el glif a sobre."""
-        c = self.canvas
-        estil = ("Icona." if self.amb_icones else "") + ("Accent.TButton" if accent else "TButton")
-        colors = {e: _estil(estil, "foreground", s or None, defecte=self.color_text)
-                  for e, s in (("repos", ""), ("sobre", "active"), ("premut", "pressed"))}
-        fons = c.create_image(x, y, anchor="nw", image=self._imatge(accent, "repos", w, h), tags=(fila, tag))
-        # El text no rep el ratolí (state=disabled): així entrar-hi no és sortir de la imatge
-        text = c.create_text(x + w // 2, y + h // 2, text=text_icona(icona, self.amb_icones), font=self.font_boto,
-                             fill=colors["repos"], disabledfill=colors["repos"], state="disabled", tags=(fila, tag))
-
-        def estat(nom: str) -> None:
-            c.itemconfigure(fons, image=self._imatge(accent, nom, w, h))
-            c.itemconfigure(text, disabledfill=colors[nom])
-
-        def deixa_anar(e) -> None:
-            x0, y0, x1, y1 = c.bbox(fons) or (0, 0, 0, 0)
-            dins = x0 <= c.canvasx(e.x) <= x1 and y0 <= c.canvasy(e.y) <= y1
-            estat("sobre" if dins else "repos")
-            if dins:
-                ordre()
-
-        c.tag_bind(fons, "<Enter>", lambda _e: estat("sobre"))
-        c.tag_bind(fons, "<Leave>", lambda _e: estat("repos"))
-        c.tag_bind(fons, "<ButtonPress-1>", lambda _e: estat("premut"))
-        c.tag_bind(fons, "<ButtonRelease-1>", deixa_anar)
-        self.consells.append(Consell(c, consell, tag))
+        c.create_text(0, y + self.alt_nom // 2, anchor="w", text=_retalla(feta.nom, self.mesura_nom, lloc),
+                      font=self.font_nom, fill=self.color_text, tags=fila)
+        c.create_text(0, y + self.alt_nom + self.alt_text // 2, anchor="w",
+                      text=_retalla(" · ".join(resum), self.mesura_text, lloc), font=self.font_text,
+                      fill=self.color_secundari, tags=fila)
 
     def _dibuixa_detalls(self, i: int, feta: fetes.Feta, y: int) -> int:
         """Dibuixa els detalls d'una cançó sota la fila, per sota de tot (les files de sota els tapen).
@@ -445,13 +594,9 @@ class LlistaFetes(ttk.Frame):
         self._pas(canvis, i, y_vista, y_final, time.monotonic())
 
     def _icona_detalls(self, i: int, obert: bool) -> None:
-        tag = f"b{i}_2"
-        for item in self.canvas.find_withtag(tag):
-            if self.canvas.type(item) == "text":
-                self.canvas.itemconfigure(item, text=text_icona("plega" if obert else "desplega", self.amb_icones))
-        for consell in self.consells:
-            if consell.tag == tag:
-                consell.text = "Amaga els detalls" if obert else "Detalls"
+        boto = self.botons[(i, 2)]
+        boto.posa_text(text_icona("plega" if obert else "desplega", self.amb_icones))
+        boto.consell.text = "Amaga els detalls" if obert else "Detalls"
 
     def _pas(self, canvis: dict, i: int, y_vista: float, y_final: float, t0: float) -> None:
         """Un fotograma de l'animació. Va per temps i no per passos: sempre dura el mateix."""
@@ -625,49 +770,9 @@ class App:
         self._actualitza_classificacions()
 
     def _pestanya_estat(self, f) -> None:
-        dalt = ttk.Frame(f)
-        dalt.pack(fill="x")
-        self.activitat = Activitat(dalt, self.fosc)
-        self.activitat.pack(side="left", padx=(0, 14))
-        textos = ttk.Frame(dalt)
-        textos.pack(side="left", fill="x", expand=True)
-        self.lbl_estat = ttk.Label(textos, text="Aturat", style="Estat.TLabel")
-        self.lbl_estat.pack(anchor="w")
-        self.lbl_detall = ttk.Label(textos, text="", style="Secundari.TLabel", wraplength=360, justify="left")
-        self.lbl_detall.pack(anchor="w")
-
-        self.marc_progres = ttk.Frame(f)  # només es veu mentre es descarreguen els models
-        self.barra = ttk.Progressbar(self.marc_progres, mode="determinate", maximum=1000)
-        self.barra.pack(fill="x", pady=(12, 4))
-        self.lbl_progres = ttk.Label(self.marc_progres, text="", style="Secundari.TLabel")
-        self.lbl_progres.pack(anchor="w")
-
-        self.marc_boto = ttk.Frame(f)
-        self.marc_boto.pack(fill="x", pady=(14, 0))
-        self.btn_actiu = ttk.Button(self.marc_boto, text="Activa", style="Accent.TButton", command=self.commuta)
-        self.btn_actiu.pack(side="left", ipadx=18)
-        self.lbl_comptadors = ttk.Label(self.marc_boto, text="", style="Secundari.TLabel")
-        self.lbl_comptadors.pack(side="left", padx=12)
-        self.lbl_dispositiu = ttk.Label(f, text="", style="Secundari.TLabel")
-        self.lbl_dispositiu.pack(anchor="w", pady=(8, 0))
-        # Si és al podi d'alguna classificació: la copa i on (clicar-hi porta a la pestanya)
-        self.marc_podi = ttk.Frame(f, cursor="hand2")
-        self.img_podi = ttk.Label(self.marc_podi)
-        self.img_podi.pack(side="left", padx=(0, 6))
-        self.lbl_podi = ttk.Label(self.marc_podi, text="", style="Accent.TLabel")
-        self.lbl_podi.pack(side="left")
-        self.consell_podi = Consell(self.marc_podi, "")
-        for w in (self.marc_podi, self.img_podi, self.lbl_podi):
-            w.bind("<Button-1>", lambda _e: self.pestanyes.select(self.pestanya_classificacions))
-
-        ttk.Separator(f).pack(fill="x", pady=14)
-        cap = ttk.Frame(f)
-        cap.pack(fill="x", pady=(0, 6))
-        ttk.Label(cap, text="Les teves cançons", style="Seccio.TLabel").pack(side="left")
-        self.btn_esborra_totes = ttk.Button(cap, text="Esborra-les totes", command=self.esborra_totes)
-        self.btn_esborra_totes.pack(side="right")
-        self.lbl_total = ttk.Label(cap, text="", style="Secundari.TLabel")
-        self.lbl_total.pack(side="right", padx=8)
+        self.capcalera = Capcalera(f, self)
+        self.capcalera.pack(fill="x")
+        self.activitat = self.capcalera.activitat
         self.llista = LlistaFetes(f, self)
         self.llista.pack(fill="both", expand=True)
 
@@ -759,30 +864,25 @@ class App:
         if not self.pestanyes:
             return
         titol, detall = self._textos(fase)
-        self.lbl_estat.config(text=titol)
-        self.lbl_detall.config(text=detall)
         self.activitat.mode = "aturat" if self.aturant else ("esperant" if fase == "engegant" else fase)
 
         if fase == "descarregant":
-            self.btn_actiu.config(text="Descarregant models…", state="disabled")
+            boto = ("Descarregant models…", False)
         elif self.aturant and fase != "aturat":
-            self.btn_actiu.config(text="Aturant…", state="disabled")
+            boto = ("Aturant…", False)
         else:
-            self.btn_actiu.config(text="Desactiva" if fase != "aturat" else "Activa", state="normal")
+            boto = ("Desactiva" if fase != "aturat" else "Activa", True)
 
+        progres = None
         if fase == "descarregant":
-            self.marc_progres.pack(fill="x", after=self.lbl_detall.master.master)
             d = self.descarrega
-            self.barra.config(value=1000 * self.bytes_descarregats / max(d.total, 1))
             text = f"{_mida(self.bytes_descarregats)} de {_mida(d.total)}"
             velocitat = self._velocitat()
             if velocitat > 10_000:
                 queden = (d.total - self.bytes_descarregats) / velocitat
                 mbs = f"{velocitat / 1e6:.1f}".replace(".", ",")
                 text += f" · {mbs} MB/s · queden uns {_durada(max(queden, 60))}"
-            self.lbl_progres.config(text=text)
-        else:
-            self.marc_progres.pack_forget()
+            progres = (self.bytes_descarregats / max(d.total, 1), text)
 
         e = self.estat
         parts = []
@@ -790,9 +890,9 @@ class App:
             parts.append(f"Aquesta sessió: {e.fetes} fetes" + (f", {e.fallades} fallades" if e.fallades else ""))
         if e.fetes:
             parts.append(f"{e.temps_mitja_s / 60:.0f} min de mitjana")
-        self.lbl_comptadors.config(text=" · ".join(parts))
-        if self.perfil:
-            self.lbl_dispositiu.config(text=f"Treballa amb: {self.perfil.device.upper()} — {self.perfil.nom}")
+        dispositiu = f"Treballa amb: {self.perfil.device.upper()} — {self.perfil.nom}" if self.perfil else ""
+        self.capcalera.posa(titol=titol, detall=detall, boto=boto, progres=progres, comptadors=" · ".join(parts),
+                            dispositiu=dispositiu)
 
     def _velocitat(self) -> float:
         if len(self.mostres) < 3:
@@ -815,12 +915,7 @@ class App:
             return
         llista = fetes.llista()
         self.llista.mostra(llista)
-        if llista:
-            self.lbl_total.config(text=f"{len(llista)} · {_mida(sum(f.mida for f in llista))}")
-            self.btn_esborra_totes.pack(side="right")
-        else:
-            self.lbl_total.config(text="")
-            self.btn_esborra_totes.pack_forget()
+        self.capcalera.posa(total=f"{len(llista)} · {_mida(sum(f.mida for f in llista))}" if llista else None)
 
     def _processa_cua(self) -> None:
         try:
@@ -997,16 +1092,11 @@ class App:
         self.pestanya_classificacions.mostra(self.classificacions, self.classificacions_rebut, error)
         podis = classificacions.destacades(self.classificacions)
         if podis:
-            from PIL import ImageTk
-
             rank, text = podis[0]
-            self._foto_podi = ImageTk.PhotoImage(copa(rank, 18))
-            self.img_podi.config(image=self._foto_podi)
-            self.lbl_podi.config(text=text + (f"  (+{len(podis) - 1})" if len(podis) > 1 else ""))
-            self.consell_podi.text = "\n".join(t for _r, t in podis)
-            self.marc_podi.pack(anchor="w", pady=(6, 0), after=self.lbl_dispositiu)
+            self.capcalera.posa(podi=(rank, text + (f"  (+{len(podis) - 1})" if len(podis) > 1 else ""),
+                                      "\n".join(t for _r, t in podis)))
         else:
-            self.marc_podi.pack_forget()
+            self.capcalera.posa(podi=None)
 
     def _canvi_pestanya(self, _e=None) -> None:
         if self.pestanyes.select() == str(self.pestanya_classificacions):
