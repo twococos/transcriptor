@@ -68,7 +68,16 @@ if ((Get-AuthenticodeSignature $Uv).Status -ne "Valid") { throw "uv.exe no està
 Copy-Item $Uv (Join-Path $stage "uv.exe")
 
 $sortida = Join-Path $arrel "installer\dist\Transcriptor-$versio.msi"
-wix build installer\transcriptor.wxs -ext WixToolset.Util.wixext -arch x64 `
-    -d "Versio=$versio" -d "Stage=$stage" -o $sortida
+# wix.exe és el llançador que crea `dotnet tool install` i no està signat: Smart App Control el pot
+# bloquejar. Si es troba la DLL de l'eina, s'executa amb dotnet.exe (signat per Microsoft).
+$wixDll = Get-ChildItem (Join-Path $env:USERPROFILE ".dotnet\tools\.store\wix") -Recurse -Filter wix.dll `
+    -ErrorAction SilentlyContinue | Select-Object -First 1
+$argsWix = @("build", "installer\transcriptor.wxs", "-ext", "WixToolset.Util.wixext", "-arch", "x64",
+    "-d", "Versio=$versio", "-d", "Stage=$stage", "-o", $sortida)
+if ($wixDll -and (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+    dotnet $wixDll.FullName @argsWix
+} else {
+    wix @argsWix
+}
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Instal·lador: $sortida"
