@@ -75,6 +75,9 @@ def _visor(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .app.windows import sense_dialegs_d_error
+
+    sense_dialegs_d_error()
     if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stderr.reconfigure(encoding="utf-8")

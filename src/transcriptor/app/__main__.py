@@ -157,16 +157,38 @@ class Activitat(tk.Canvas):
     """Barres d'equalitzador: ballen quan transcriu, ones quan descarrega, respiren quan espera."""
 
     N, AMPLE, ALT, GRUIX = 5, 76, 52, 9
+    ESCALA = 4  # es dibuixa a 4× i es redueix: vores suaus i moviment per sota del píxel
 
     def __init__(self, pare, fosc: bool):
+        from PIL import ImageTk
+
         super().__init__(pare, width=self.AMPLE, height=self.ALT, bg=_fons(), highlightthickness=0)
         self.mode = "aturat"
+        self.fons = color_hex(self, _fons())
         self.color_aturat = "#4a4a4a" if fosc else "#cfcfcf"
         self.t0 = time.monotonic()
         pas = self.AMPLE / self.N
         self.xs = [pas * (i + 0.5) for i in range(self.N)]
-        self.barres = [self.create_line(x, 0, x, 0, width=self.GRUIX, capstyle="round") for x in self.xs]
+        self.foto = ImageTk.PhotoImage("RGB", (self.AMPLE, self.ALT), master=self)
+        self.create_image(0, 0, anchor="nw", image=self.foto)
+        self._dibuixa(0)  # encara que no es vegi: que en mostrar la finestra no surti buit
         self._anima()
+
+    def _dibuixa(self, t: float) -> None:
+        from PIL import Image, ImageDraw
+
+        e = self.ESCALA
+        img = Image.new("RGB", (self.AMPLE * e, self.ALT * e), self.fons)
+        d = ImageDraw.Draw(img)
+        color = COLORS_ACTIVITAT.get(self.mode, self.color_aturat)
+        marge = self.GRUIX / 2 + 1
+        util = self.ALT - 2 * marge
+        mig, radi = self.ALT / 2, self.GRUIX / 2
+        for i, x in enumerate(self.xs):
+            h = max(self._alcada(i, t), 0.02) * util  # llargada de la barra sense els caps rodons
+            d.rounded_rectangle(((x - radi) * e, (mig - h / 2 - radi) * e, (x + radi) * e, (mig + h / 2 + radi) * e),
+                                radius=radi * e, fill=color)
+        self.foto.paste(img.resize((self.AMPLE, self.ALT), Image.LANCZOS))
 
     def _alcada(self, i: int, t: float) -> float:
         if self.mode == "processant":  # sinusoides de freqüències diferents: sembla música
@@ -178,17 +200,11 @@ class Activitat(tk.Canvas):
         return 0.1
 
     def _anima(self) -> None:
-        t = time.monotonic() - self.t0
-        marge = self.GRUIX / 2 + 1
-        util = self.ALT - 2 * marge
-        color = COLORS_ACTIVITAT.get(self.mode, self.color_aturat)
-        for i, (x, b) in enumerate(zip(self.xs, self.barres)):
-            h = max(self._alcada(i, t), 0.02) * util
-            mig = self.ALT / 2
-            self.coords(b, x, mig - h / 2, x, mig + h / 2)
-            self.itemconfigure(b, fill=color)
-        rapid = self.mode in ("processant", "descarregant")
-        self.after(40 if rapid else (90 if self.mode != "aturat" else 500), self._anima)
+        # Amb la finestra amagada (a la safata) no es dibuixa: no cal gastar-hi CPU
+        visible = self.winfo_viewable()
+        if visible:
+            self._dibuixa(time.monotonic() - self.t0)
+        self.after(40 if visible and self.mode != "aturat" else 500, self._anima)
 
 
 class Capcalera(tk.Canvas):
@@ -782,7 +798,7 @@ class App:
         files: list[tuple[str, tk.Widget]] = [("Token", ttk.Entry(g, textvariable=self.var_token, show="●")),
                                               ("Servidor", ttk.Entry(g, textvariable=self.var_api))]
         if not benvinguda:
-            files.append(("Nom al Cançoner", ttk.Label(g, textvariable=self.var_nom, style="Canco.TLabel")))
+            files.append(("Nom del teu Transcriptor", ttk.Label(g, textvariable=self.var_nom, style="Canco.TLabel")))
             files.append(("Nuclis (0 = tots)", ttk.Spinbox(g, from_=0, to=64, textvariable=self.var_fils, width=6)))
         for i, (etiqueta, camp) in enumerate(files):
             ttk.Label(g, text=etiqueta).grid(row=i, column=0, sticky="w", padx=(0, 12), pady=4)
@@ -1230,6 +1246,7 @@ def windows_nom() -> str:
 
 
 def main() -> None:
+    windows.sense_dialegs_d_error()
     _sortides_nul_les()
     _sense_consoles()
     # Models, cache i àudio temporal fora del directori d'instal·lació

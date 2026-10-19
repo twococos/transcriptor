@@ -13,7 +13,14 @@ dependencies = [
     "pydantic>=2.7",
     "pyyaml>=6.0",
     "requests>=2.32",
-    "yt-dlp[default]>=2026.8",
+    # Els extres "default" de yt-dlp sense pycryptodomex ni brotli: porten DLL sense signar que Smart App
+    # Control bloqueja de tant en tant, i per a YouTube no calen (yt-dlp té AES en Python pur)
+    "yt-dlp>=2026.8",
+    "yt-dlp-ejs",
+    "certifi",
+    "mutagen",
+    "urllib3",
+    "websockets",
     "deno>=2.0",  # intèrpret de JS per als reptes de YouTube de yt-dlp (sense instal·lar res a part)
     "imageio-ffmpeg>=0.6",
     "demucs>=4.1",

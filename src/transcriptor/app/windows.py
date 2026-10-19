@@ -78,6 +78,20 @@ def segons_inactiu() -> float:
     return ((ara - info.dwTime) & 0xFFFFFFFF) / 1000.0
 
 
+def sense_dialegs_d_error() -> None:
+    """Que Windows no obri diàlegs quan no pot carregar una DLL: que només falli l'import.
+
+    Smart App Control bloqueja de tant en tant DLL sense signar que fins llavors deixava carregar (quan no
+    en pot confirmar la reputació a temps), i Windows ho diu amb un diàleg "Imagen incorrecta / Bad image"
+    que atura el procés fins que algú el tanca. Amb SEM_FAILCRITICALERRORS, l'import falla amb un error
+    normal (les dependències opcionals, com les de yt-dlp, ja ho toleren). Els processos fills l'hereten.
+    """
+    if not ES_WINDOWS:
+        return
+    SEM_FAILCRITICALERRORS, SEM_NOOPENFILEERRORBOX = 0x0001, 0x8000
+    ctypes.windll.kernel32.SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX)
+
+
 def prioritat_baixa() -> None:
     """Prioritat "per sota del normal": el worker no alenteix el que faci l'usuari."""
     if not ES_WINDOWS:
