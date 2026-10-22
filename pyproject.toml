@@ -1,6 +1,6 @@
 [project]
 name = "transcriptor"
-version = "0.1.7"
+version = "0.1.8"
 description = "De l'àudio a lletra + acords sincronitzats per a El Cançoner (guitarreo.cat)"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"

@@ -53,6 +53,12 @@ def _bench(args) -> int:
     return executa_bench(args)
 
 
+def _estils(args) -> int:
+    from .bench.style import executa
+
+    return executa(args)
+
+
 def _models(args) -> int:
     from .config import Config
     from .device import detecta
@@ -109,6 +115,16 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--nomes-postproces", action="store_true",
                    help="No calcula res de nou: només repeteix el postprocés sobre la cache")
     b.set_defaults(func=_bench)
+
+    e = sub.add_parser("estils", help="Banc de l'estil rítmic contra etiquetes fetes a mà")
+    e.add_argument("--etiquetes", default="work/bench/estils.csv", help="CSV id,titol,artista,estil")
+    e.add_argument("--plantilla", action="store_true", help="Genera el CSV d'etiquetes per omplir")
+    e.add_argument("--dataset", default="work/bench/dataset.jsonl")
+    e.add_argument("--audio", default="work/bench/audio")
+    e.add_argument("--resultats", default="work/bench/resultats/final",
+                   help="Execució del banc d'on es prenen els temps i el compàs")
+    e.add_argument("--out", default="work/bench/resultats/estils")
+    e.set_defaults(func=_estils)
 
     w = sub.add_parser("worker", help="Demana feines a l'API del canconer i les processa")
     w.add_argument("--api", required=True)

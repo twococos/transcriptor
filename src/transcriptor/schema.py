@@ -78,6 +78,26 @@ class Seccio(BaseModel):
     name: str  # nom visible: "Estrofa 1", "Tornada"
 
 
+class Groove(BaseModel):
+    """Empremta rítmica de l'acompanyament (stages/groove.py): una fila de compàs per banda, 0-1."""
+
+    slots_per_beat: int
+    low: list[float]
+    mid: list[float]
+    high: list[float]
+
+
+class Ritme(BaseModel):
+    """Estil rítmic de l'acompanyament (postprocess/style.py). `style` és un dels STYLE_IDS, que són
+    contracte amb el reproductor del canconer (src/lib/player/styles.ts)."""
+
+    style: str
+    confidence: float
+    alternatives: list[tuple[str, float]] = Field(default_factory=list)
+    groove: Groove | None = None
+    arpeggiated: float | None = None
+
+
 class SongAnalysis(BaseModel):
     version: int = VERSIO
     source: Font
@@ -90,6 +110,7 @@ class SongAnalysis(BaseModel):
     words: list[Paraula] = Field(default_factory=list)
     lines: list[Linia] = Field(default_factory=list)
     sections: list[Seccio] = Field(default_factory=list)
+    rhythm: Ritme | None = None  # opcional: les anàlisis d'abans de la detecció d'estil no en tenen
     lyrics_source: Literal["user", "db", "lrclib", "whisper", "cap"] = "cap"
     models: dict[str, str] = Field(default_factory=dict)
     temps_etapes_s: dict[str, float] = Field(default_factory=dict)
@@ -120,6 +141,8 @@ class ImportResult(BaseModel):
 #   words:    [start_ms, end_ms, text, conf | null]
 #   lines:    [start_ms, end_ms, paraula_inici, paraula_fi, secció | null]
 #   sections: [start_ms, end_ms, label, name]
+#   rhythm:   {"style", "confidence", "alternatives": [[style, prob]...],
+#              "groove": {"slots_per_beat", "low", "mid", "high"}}   ← opcional (a 0,01)
 #
 # El `bar` de cada pulsació no es desa: és el nombre de pulsacions amb beat 1 fins a ella (0 =
 # anacrusi). El `beat` es dedueix comptant des de l'últim inici de compàs; les pulsacions de
@@ -175,7 +198,7 @@ def a_compacte(a: SongAnalysis) -> dict:
             fila.append(c.raw)
         acords.append(fila)
 
-    return {
+    d = {
         "v": FORMAT_COMPACTE,
         "source": a.source.model_dump(exclude_none=True),
         "meta": a.meta.model_dump(),
@@ -192,6 +215,18 @@ def a_compacte(a: SongAnalysis) -> dict:
         "stage_times_s": a.temps_etapes_s,
         "warnings": a.avisos,
     }
+    if a.rhythm:
+        r = a.rhythm
+        ritme: dict = {"style": r.style, "confidence": round(r.confidence, 3),
+                       "alternatives": [[s, round(p, 3)] for s, p in r.alternatives]}
+        if r.groove:
+            g = r.groove
+            ritme["groove"] = {"slots_per_beat": g.slots_per_beat, **{
+                banda: [round(x, 2) for x in getattr(g, banda)] for banda in ("low", "mid", "high")}}
+        if r.arpeggiated is not None:
+            ritme["arpeggiated"] = round(r.arpeggiated, 3)
+        d["rhythm"] = ritme
+    return d
 
 
 def de_compacte(d: dict) -> SongAnalysis:
@@ -232,6 +267,7 @@ def de_compacte(d: dict) -> SongAnalysis:
         words=[Paraula(start=_s(a), end=_s(b_), text=t, conf=c) for a, b_, t, c in d["words"]],
         lines=[Linia(start=_s(a), end=_s(b_), word_range=(w0, w1), section=s) for a, b_, w0, w1, s in d["lines"]],
         sections=[Seccio(start=_s(a), end=_s(b_), label=l, name=n) for a, b_, l, n in d["sections"]],
+        rhythm=Ritme(**d["rhythm"]) if d.get("rhythm") else None,
         lyrics_source=d["lyrics_source"],
         models=d.get("models", {}),
         temps_etapes_s=d.get("stage_times_s", {}),

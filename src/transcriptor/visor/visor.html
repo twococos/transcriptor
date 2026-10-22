@@ -210,6 +210,10 @@ function carregaAnalisi(dades) {
   if (A.key) parts.push(`to ${A.key.tonic}${A.key.mode === "minor" ? "m" : ""} (${A.key.confidence})`);
   if (A.tempo) parts.push(`${A.tempo.bpm} BPM`, `${ts[0]}/${ts[1]}`);
   if (A.capo_suggerit) parts.push(`capo ${A.capo_suggerit}`);
+  if (A.rhythm) {
+    const alt = (A.rhythm.alternatives || []).map(([s, p]) => `${s} ${Math.round(p * 100)}%`).join(", ");
+    parts.push(`estil ${A.rhythm.style} ${Math.round(A.rhythm.confidence * 100)}%${alt ? ` (${alt})` : ""}`);
+  }
   parts.push(`${A.beats.length} pulsacions`, `${A.chords.length} acords`, `${A.words.length} paraules`);
   if (A.models && A.models.lyrics_aparellades) parts.push(`aparellades ${A.models.lyrics_aparellades}`);
   $("meta").textContent = parts.join(" · ");

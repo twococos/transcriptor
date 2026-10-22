@@ -23,10 +23,10 @@ from .cache import Cache
 from .config import Config, prepara_entorn_models
 from .device import Perfil, configura_fils, detecta
 from .notation import transposa
-from .postprocess import chords_clean, key as key_mod, lines as lines_mod, meter
-from .schema import (Acord, Font, ImportResult, Linia, Meta, Paraula, Pulsacio, Seccio, SongAnalysis,
-                     Tempo, Tonalitat)
-from .stages import chords, fetch, lyrics_align, lyrics_asr, lyrics_source, rhythm, separate
+from .postprocess import chords_clean, key as key_mod, lines as lines_mod, meter, style as style_mod
+from .schema import (Acord, Font, Groove, ImportResult, Linia, Meta, Paraula, Pulsacio, Ritme, Seccio,
+                     SongAnalysis, Tempo, Tonalitat)
+from .stages import chords, fetch, groove, lyrics_align, lyrics_asr, lyrics_source, rhythm, separate
 from .text import detecta_idioma, linies_de_text
 
 log = logging.getLogger(__name__)
@@ -70,6 +70,24 @@ def _titol_artista(meta: dict, entrada: Entrada) -> tuple[str, str]:
         else:
             titol = t.strip()
     return titol, artista or meta.get("artist", "")
+
+
+def _estil(cache: Cache, cami_audio: Path, veu: Path, compas: dict, separador: str) -> Ritme | None:
+    """Estil rítmic de l'acompanyament (per al reproductor del canconer). Mai fa fallar la feina."""
+    try:
+        clau_beats = _hash(json.dumps([[b["t"], b["beat"]] for b in compas["beats"]]))
+        emp = cache.json("groove", {"versio": groove.VERSIO, "beats": clau_beats, "veu": separador},
+                         lambda: groove.empremta(cami_audio, veu, compas["beats"], compas["time_signature"]))
+        if not emp:
+            return None
+        c = style_mod.classifica(emp, compas["bpm"], compas["time_signature"])
+        return Ritme(style=c["style"], confidence=c["confidence"],
+                     alternatives=[tuple(a) for a in c["alternatives"]],
+                     groove=Groove(slots_per_beat=emp["slots_per_beat"], low=emp["low"], mid=emp["mid"],
+                                   high=emp["high"]))
+    except Exception:  # noqa: BLE001 — l'estil és un extra: sense ell, la resta de l'anàlisi serveix
+        log.warning("No s'ha pogut detectar l'estil rítmic", exc_info=True)
+        return None
 
 
 # Fases que veu l'usuari a l'app (en_fase); l'ordre és el de l'execució
@@ -182,6 +200,8 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     tonalitat = key_mod.estima(segs)
     capo = key_mod.suggereix_capo(tonalitat) if (tonalitat and cfg.extra.get("aplicar_capo", True)) else 0
 
+    ritme_estil = _estil(cache, cami_audio, veu, compas, separador)
+
     # 8. Paraules i línies
     avisos: list[str] = []
     al: dict | None = None
@@ -247,8 +267,10 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
         lines=linies_out,
         sections=[Seccio(start=s["start"], end=s["end"], label=s["label"].lower(), name=s["name"])
                   for s in seccions],
+        rhythm=ritme_estil,
         lyrics_source=font_lletra["font"],
         models={"separation": separador, "chords": "btc-large-voca", "rhythm": "beat_this-final0",
+                "style": f"plantilles-v{groove.VERSIO}",
                 "asr": f"faster-whisper-{cfg.whisper_model}-{compute_type}",
                 "lyrics_align": "transfer-asr" if aparellades is not None else "cap",
                 "device": perfil.device, "device_name": perfil.nom},

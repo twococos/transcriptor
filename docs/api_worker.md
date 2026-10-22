@@ -174,10 +174,25 @@ confiances a 0,001. Comprovat amb les 294 anàlisis de la cache: mitjana de 34 K
   "words":    [[12100, 12400, "En", 0.95], …],     // inici, fi, text, conf | null
   "lines":    [[12100, 15800, 0, 7, 2], …],        // inici, fi, paraula inicial, paraula final (exclosa), secció | null
   "sections": [[0, 12000, "intro", "Intro"], …],   // inici, fi, tipus, nom
+  "rhythm": {                                      // opcional (app ≥ 0.1.8)
+    "style": "rumba", "confidence": 0.62,
+    "alternatives": [["pop", 0.21], ["reggae", 0.09]],
+    "groove": { "slots_per_beat": 4, "low": [1.0, 0.12, …], "mid": […], "high": […] }
+  },
   "lyrics_source": "lrclib",
   "models": { … }, "stage_times_s": { … }, "warnings": [ … ]
 }
 ```
+- `rhythm` (opcional: els workers antics no l'envien i el servidor l'accepta igualment): estil rítmic
+  de l'acompanyament, que el reproductor «Toca-la» del canconer fa servir per triar el patró de
+  guitarra (`src/lib/player/styles.ts`). `style` és un d'aquests IDs, que són contracte (no se'n
+  reanomena cap; el canconer ignora els que no coneix): `pop`, `balada`, `rock`, `folk`, `rumba`,
+  `havanera`, `marxa`, `reggae`, `bossa`, `swing`, `vals`, `vals-arpegi`, `compost-arpegi`,
+  `compost-rasgueig`, `lliure`. `confidence` i `alternatives` són probabilitats del classificador
+  (`postprocess/style.py`). `groove` és l'empremta mesurada (`stages/groove.py`): una fila de compàs
+  per banda (greus < 150 Hz, mitjos fins a 2 kHz, aguts), `slots_per_beat` franges per temps (4 en
+  compassos simples, 2 en 6/8), valors 0-1 a 0,01; el reproductor hi modula les intensitats. L'admin
+  pot fixar un altre estil a la web (`songs.rhythm`) sense tocar l'anàlisi.
 - El número de compàs no es desa: és el nombre de pulsacions amb beat 1 fins a cada pulsació (0 =
   anacrusi). El número de temps es compta des de l'últim inici de compàs; a l'anacrusi, enrere des del
   numerador del compàs.
