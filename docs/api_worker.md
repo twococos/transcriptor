@@ -28,9 +28,12 @@ lease caducat tornen a la cua comptant un intent (no cal cap temporitzador al se
 
 Petició:
 ```json
-{ "worker": "PC-Coco", "app_version": "0.1.0",
+{ "worker": "PC-Coco", "app_version": "0.1.9", "analysis_version": "0.1.9",
   "device": { "type": "cpu", "name": "Intel i7-6700", "vram_gb": 0 } }
 ```
+- `analysis_version` (opcional, des de la 0.1.9): l'última versió del transcriptor que ha canviat el
+  resultat de les anàlisis (`VERSIO_ANALISI` de `versions.py`). Vegeu
+  [Actualització de les anàlisis](#actualització-de-les-anàlisis-feines-update).
 Resposta `204`: no hi ha feina. Resposta `200`:
 ```json
 { "job": {
@@ -47,6 +50,10 @@ Resposta `204`: no hi ha feina. Resposta `200`:
   - `new`: el resultat crea una cançó pendent i una proposta a nom de l'usuari sistema "Transcriptor".
   - `analyze`: per a una cançó existent. `song_content` porta el seu `content` (el worker en fa servir la
     lletra, font "db") i el resultat **només** desa l'anàlisi; el `content` no es toca.
+  - `update` (des de la 0.1.9): com `analyze`, per tornar a fer una anàlisi amb una versió més nova.
+    Porta a més `song_id`, `analysis` (l'anàlisi vigent, compacta), `analysis_app_version` (amb quina
+    versió es va fer) i `raw` (les seves dades crues en base64, o null). Només s'assigna a workers que
+    envien `analysis_version` i que no és més antiga que la de l'anàlisi.
 - `lyrics_text`: lletra enganxada per l'admin en encuar (opcional, té prioritat).
 - `language`: opcional; si és null, l'idioma el detecta Whisper. **L'idioma de la BD no sempre és
   correcte** (p. ex. "La gent que estimo" hi consta com a `es`).
@@ -64,11 +71,15 @@ Cos buit. Cada `lease_seconds / 3`. Allarga el lease. `409` = la feina ja no és
   "stats": { "v": 1, … } }
 ```
 - `stats` (opcional, des de la 0.1.7): com s'ha fet la feina. Vegeu [Estadístiques](#estadístiques-de-la-feina-stats-v1).
+- `raw` (opcional, des de la 0.1.9): les dades crues de l'anàlisi en base64 (`paquet.py`, ~75 KB). El
+  canconer les desa a `song_analysis_raw` i les torna en les feines `update`. Un resultat sense `raw`
+  esborra les que hi havia: han de ser sempre les de l'anàlisi vigent.
 - `proposal` té la forma d'`ImportResult` (`src/lib/importers/types.ts` del canconer). En mode `analyze`
   s'ignora.
 - `analysis` és l'anàlisi en **format compacte v2** (vegeu més avall). El canconer la valida amb Zod
   (`src/lib/schemas/transcriber.ts`) i la desa a `song_analyses` (una fila per cançó; reprocessar la
-  sobreescriu). També omple `songs.bpm` i `songs.time_signature` (en mode `analyze`, només si són buits).
+  sobreescriu). També omple `songs.bpm` i `songs.time_signature` (en mode `analyze`, només si són buits;
+  en mode `update`, també si encara són els de l'anàlisi anterior).
 - Si en mode `new` ja existeix una cançó amb el mateix artista i títol, la feina queda fallada amb
   "Ja existeix (cançó N)".
 - Respostes: `{"status": "ok", "songId": …, "proposalId": …}` o `{"status": "duplicate", "songId": …}`.
@@ -200,6 +211,31 @@ confiances a 0,001. Comprovat amb les 294 anàlisis de la cache: mitjana de 34 K
   temps té cada `<ch>` i cada línia) es calcula al moment alineant les paraules del `content` amb
   `words` (Fase 8). Si el `youtubeUrl` de la cançó canvia, l'anàlisi deixa de ser vigent
   (`getCurrentSongAnalysis`).
+
+## Actualització de les anàlisis (feines `update`)
+
+Quan el transcriptor millora (p. ex. la correcció de pulsacions de la 0.1.9), les anàlisis que ja són al
+canconer es poden tornar a fer:
+
+- `versions.py` del transcriptor diu quines versions han canviat el resultat (`CANVIS`) i què ha
+  canviat de les dades crues (sortida dels models: Beat This!, BTC, Whisper, envolupants de l'àudio). El
+  postprocés es refà sempre sencer: són segons.
+- Cada anàlisi recorda amb quina versió es va fer (`song_analyses.app_version`; en actualitzar-la, la
+  nova). El worker envia `analysis_version` al claim. Una anàlisi és **desactualitzada** si la seva versió
+  és anterior a la `analysis_version` més nova dels workers actius vistos en els últims 30 dies.
+- L'admin (pestanya «Transcripcions») en veu el recompte per versió i les pot encuar totes, o una per una
+  des de la pestanya «Cançons». Amb l'interruptor «Automàtic», quan la cua és buida el claim crea una
+  feina `update` per a la cançó desactualitzada més antiga que el worker pugui millorar. Les feines
+  `update` tenen prioritat −10: passen darrere de tota la resta.
+- El worker la fa pel camí més ràpid:
+  1. Amb `raw` (si les dades crues no són d'abans d'un canvi de model): només el postprocés, sense àudio.
+  2. Si no, amb la cache local (si aquest PC la va transcriure i les etapes hi són): sense àudio. Sense
+     les envolupants de l'estil a la cache, es conserva l'estil de l'anàlisi anterior.
+  3. Si no, sencera (descarrega l'àudio).
+
+  En tots tres casos envia `raw` amb el resultat.
+- El resultat només substitueix l'anàlisi i les dades crues: mai el `content`, les propostes ni l'estil
+  fixat per l'admin (`songs.rhythm`).
 
 ## Decisions (Fase 6)
 

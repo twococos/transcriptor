@@ -76,7 +76,7 @@ def _resultat_fals(*_a, **_k):
     analisi = SongAnalysis(source=Font(duration_s=1.0))
     proposta = ImportResult(title="T", artist="A", key="Am", capo=0, language="ca", content="<sec>Estrofa 1</sec>")
     stats = {"v": 1, "audio": {"duration_s": 1.0}, "timing": {"total_s": 0.5, "stages_s": {}, "cached": []}}
-    return type("R", (), {"analisi": analisi, "proposta": proposta, "estadistiques": stats})()
+    return type("R", (), {"analisi": analisi, "proposta": proposta, "estadistiques": stats, "crues": None})()
 
 
 @pytest.fixture
@@ -222,5 +222,76 @@ def test_nom_i_classificacions_del_servidor():
         assert s.peticions[-1][0] == "/api/transcriber/leaderboard"
         with pytest.raises(PermissionError):
             worker_mod.Client(s.url, "dolent", "ordinador", None).jo()
+    finally:
+        s.tanca()
+
+
+def test_el_claim_diu_la_versio_d_analisi(worker_fals):
+    s = Servidor([])
+    try:
+        worker_fals(s).bucle(una=True)
+        claim = next(cos for cami, cos in s.peticions if cami == "/api/transcriber/claim")
+        assert claim["analysis_version"] == worker_mod.versions.VERSIO_ANALISI
+    finally:
+        s.tanca()
+
+
+def _crues():
+    import numpy as np
+
+    from transcriptor.paquet import Crues
+
+    return Crues(meta={"url": "u"}, durada=10.0, ritme={"pulsacions": [0.5, 1.0], "inicis_compas": [0.5]},
+                 probs=np.full((5, 170), 1 / 170, dtype=np.float32), per_trama=0.1,
+                 asr={"paraules": [], "segments": []}, idioma_asr="ca", lletra=None, groove=None,
+                 separador="htdemucs", compute_type="int8", versio=worker_mod.versions.VERSIO_ANALISI)
+
+
+def test_actualitzacio_amb_dades_crues_nomes_refa_el_postproces(worker_fals):
+    import base64
+
+    from transcriptor.paquet import desempaqueta, empaqueta
+
+    crides = []
+
+    def pipeline(entrada, **kw):
+        crides.append(kw)
+        r = _resultat_fals()
+        r.crues = kw.get("dades")
+        return r
+
+    feina = {**FEINA, "mode": "update", "song_id": 5, "analysis": None,
+             "analysis_app_version": "0.1.8", "raw": base64.b64encode(empaqueta(_crues())).decode()}
+    s = Servidor([feina])
+    try:
+        worker_fals(s, pipeline=pipeline).bucle(una=True)
+        assert len(crides) == 1 and crides[0]["dades"] is not None
+        # El resultat torna a portar les dades crues
+        assert desempaqueta(base64.b64decode(s.resultats[7]["raw"])).ritme["pulsacions"] == [0.5, 1.0]
+    finally:
+        s.tanca()
+
+
+def test_actualitzacio_sense_dades_crues_ni_cache_es_refa_sencera(worker_fals):
+    crides = []
+
+    def pipeline(entrada, **kw):
+        crides.append(kw)
+        if kw.get("sense_audio"):
+            raise worker_mod.SenseDadesCrues("rhythm")
+        return _resultat_fals()
+
+    feina = {**FEINA, "mode": "update", "song_id": 5, "raw": None, "analysis_app_version": "0.1.8",
+             "analysis": {"v": 2, "source": {"duration_s": 10.0}, "meta": {"title": "T", "artist": "A",
+                                                                         "language": "ca"},
+                          "key": None, "capo": 0, "tempo": None, "beats": {"dt": [], "downbeats": []},
+                          "chords": [], "words": [], "lines": [], "sections": [], "lyrics_source": "cap",
+                          "models": {}}}
+    s = Servidor([feina])
+    try:
+        worker_fals(s, pipeline=pipeline).bucle(una=True)
+        assert [k.get("sense_audio", False) for k in crides] == [True, False]
+        assert crides[1]["previa"] is not None
+        assert 7 in s.resultats
     finally:
         s.tanca()

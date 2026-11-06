@@ -4,6 +4,11 @@ Protocol proposat a docs/api_worker.md (pendent de validar a la Fase 6). Només 
 sortida, així funciona igual al PC, al servidor, a casa d'un amic o en una GPU llogada.
 
 Bucle: claim → (heartbeat en paral·lel) pipeline → result | fail → esborrar l'àudio → repetir.
+
+Feines `update` (vegeu versions.py): tornar a fer una anàlisi feta amb una versió anterior. Pel camí
+més ràpid que es pugui: amb les dades crues que envia el canconer només es refà el postprocés; si no
+n'hi ha, amb les de la cache local (si aquest PC la va transcriure); si tampoc, sencera. En tots els
+casos s'envien les dades crues amb el resultat, perquè la pròxima actualització sigui ràpida.
 Aturada neta: si es demana parar a mitja feina, l'allibera de seguida (fail amb released=true)
 perquè torni a la cua, i el pipeline s'interromp al següent punt de control (entre fases, a cada
 tros de demucs o a cada segment de Whisper).
@@ -11,6 +16,7 @@ tros de demucs o a cada segment de Whisper).
 
 from __future__ import annotations
 
+import base64
 import logging
 import platform
 import threading
@@ -21,12 +27,13 @@ from typing import Callable
 
 import requests
 
-from . import __version__
+from . import __version__, versions
 from .cache import Cache
 from .config import Config
 from .device import Perfil, detecta
-from .pipeline import FASES, Entrada, executa
-from .schema import a_compacte
+from .paquet import desempaqueta, empaqueta
+from .pipeline import FASES, Entrada, Resultat, SenseDadesCrues, executa
+from .schema import a_compacte, de_compacte
 from .stages.fetch import ErrorDescarrega, id_canco
 
 log = logging.getLogger(__name__)
@@ -90,7 +97,7 @@ class Client:
 
     def claim(self) -> dict | None:
         r = self._post("/claim", {
-            "worker": self.nom, "app_version": __version__,
+            "worker": self.nom, "app_version": __version__, "analysis_version": versions.VERSIO_ANALISI,
             "device": {"type": self.perfil.device, "name": self.perfil.nom, "vram_gb": self.perfil.vram_gb},
         })
         if r.status_code == 204:
@@ -104,10 +111,13 @@ class Client:
             raise FeinaPerduda(id_feina)
         r.raise_for_status()
 
-    def resultat(self, id_feina: int, proposta: dict, analisi: dict, stats: dict | None = None) -> None:
+    def resultat(self, id_feina: int, proposta: dict, analisi: dict, stats: dict | None = None,
+                 crues: bytes | None = None) -> None:
         dades = {"proposal": proposta, "analysis": analisi}
         if stats:
             dades["stats"] = stats
+        if crues:
+            dades["raw"] = base64.b64encode(crues).decode("ascii")
         self._post(f"/jobs/{id_feina}/result", dades).raise_for_status()
 
     def jo(self) -> dict:
@@ -184,11 +194,47 @@ class Worker:
         if self.atura.is_set():
             raise InterruptedError
 
+    def _executa(self, feina: dict, cache: Cache) -> Resultat:
+        """El pipeline per a la feina. En una `update`, pel camí més ràpid (vegeu la capçalera)."""
+        entrada = Entrada(font=feina["source_url"], titol=feina.get("title"), artista=feina.get("artist"),
+                          idioma=feina.get("language"), text_usuari=feina.get("lyrics_text"),
+                          content_bd=feina.get("song_content"))
+        args = dict(cfg=self.cfg, perfil=self.perfil, cache=cache, en_fase=self._en_fase, comprova=self._comprova)
+        if feina.get("mode") != "update":
+            return executa(entrada, **args)
+
+        previa = None
+        if feina.get("analysis"):
+            try:
+                previa = de_compacte(feina["analysis"])
+            except (ValueError, KeyError):
+                log.warning("Feina %s: l'anàlisi anterior no es pot llegir", feina["id"], exc_info=True)
+        if feina.get("raw"):
+            try:
+                dades = desempaqueta(base64.b64decode(feina["raw"]))
+                if not versions.crues_a_refer(dades.versio):
+                    log.info("Actualització amb les dades crues del canconer (%s)", dades.versio)
+                    return executa(entrada, **args, dades=dades, previa=previa)
+                log.info("Les dades crues (%s) són d'abans d'un canvi de model: es refà sencera", dades.versio)
+            except (ValueError, KeyError, OSError):
+                log.warning("Feina %s: dades crues il·legibles", feina["id"], exc_info=True)
+        if previa and not versions.crues_a_refer(feina.get("analysis_app_version")):
+            try:
+                res = executa(entrada, **args, previa=previa, sense_audio=True)
+                log.info("Actualització amb les dades crues de la cache local")
+                return res
+            except SenseDadesCrues as e:
+                log.info("La cache local no té l'etapa %s: es refà sencera", e)
+        return executa(entrada, **args, previa=previa)
+
     def processa(self, feina: dict) -> None:
         id_feina = feina["id"]
         self.estat.feina_actual = f"{feina.get('title') or ''} — {feina.get('artist') or ''}".strip(" —")
+        if feina.get("mode") == "update":
+            self.estat.feina_actual = f"{self.estat.feina_actual} (actualització)".strip()
         self.estat.inici_feina = time.time()
-        self._avisa(f"Processant: {self.estat.feina_actual or feina['source_url']}", "processant")
+        accio = "Actualitzant" if feina.get("mode") == "update" else "Processant"
+        self._avisa(f"{accio}: {self.estat.feina_actual or feina['source_url']}", "processant")
         perduda, fi, alliberada = threading.Event(), threading.Event(), threading.Event()
         batec = threading.Thread(target=self._batec, daemon=True,
                                  args=(id_feina, float(feina.get("lease_seconds", 600)), perduda, fi, alliberada))
@@ -196,10 +242,7 @@ class Worker:
         inici = time.perf_counter()
         cache = Cache(id_canco(feina["source_url"]))
         try:
-            res = executa(Entrada(font=feina["source_url"], titol=feina.get("title"), artista=feina.get("artist"),
-                                  idioma=feina.get("language"), text_usuari=feina.get("lyrics_text"),
-                                  content_bd=feina.get("song_content")),
-                          self.cfg, self.perfil, cache, en_fase=self._en_fase, comprova=self._comprova)
+            res = self._executa(feina, cache)
             self._en_fase(len(FASES), "Enviant el resultat")
             if perduda.is_set():
                 raise FeinaPerduda(id_feina)
@@ -207,8 +250,14 @@ class Worker:
                 raise InterruptedError
             if res.estadistiques:  # es desen també en local (en_feta)
                 res.estadistiques["timing"]["wall_s"] = round(time.perf_counter() - inici, 1)
+            crues = None
+            if res.crues is not None:
+                try:
+                    crues = empaqueta(res.crues)
+                except Exception:  # noqa: BLE001 — sense dades crues el resultat serveix igual
+                    log.warning("No s'han pogut empaquetar les dades crues", exc_info=True)
             self.client.resultat(id_feina, res.proposta.model_dump(), a_compacte(res.analisi),
-                                 res.estadistiques or None)
+                                 res.estadistiques or None, crues)
             durada = time.perf_counter() - inici
             self.estat.fetes += 1
             self.estat.temps_mitja_s += (durada - self.estat.temps_mitja_s) / self.estat.fetes
