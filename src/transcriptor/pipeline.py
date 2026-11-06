@@ -23,7 +23,8 @@ from .cache import Cache
 from .config import Config, prepara_entorn_models
 from .device import Perfil, configura_fils, detecta
 from .notation import transposa
-from .postprocess import chords_clean, key as key_mod, lines as lines_mod, meter, style as style_mod
+from .postprocess import chords_clean, key as key_mod, lines as lines_mod, meter, pulsacions as pulsacions_mod
+from .postprocess import style as style_mod
 from .schema import (Acord, Font, Groove, ImportResult, Linia, Meta, Paraula, Pulsacio, Ritme, Seccio,
                      SongAnalysis, Tempo, Tonalitat)
 from .stages import chords, fetch, groove, lyrics_align, lyrics_asr, lyrics_source, rhythm, separate
@@ -88,6 +89,26 @@ def _estil(cache: Cache, cami_audio: Path, veu: Path, compas: dict, separador: s
     except Exception:  # noqa: BLE001 — l'estil és un extra: sense ell, la resta de l'anàlisi serveix
         log.warning("No s'ha pogut detectar l'estil rítmic", exc_info=True)
         return None
+
+
+def ritme_i_acords(ritme: dict, probs: np.ndarray, per_trama: float, durada: float,
+                   cfg: Config) -> tuple[list[dict], dict, list[dict], int]:
+    """Pulsacions corregides → compàs → acords per pulsació (també el fa servir tools/revisa_ritme.py).
+
+    Retorna (correccions de la graella, compàs de meter.regularitza, segments d'acord, desfasament)."""
+    corr = pulsacions_mod.corregeix(ritme["pulsacions"], ritme["inicis_compas"])
+    pulsacions = corr["pulsacions"]
+    etiquetes, col_lapse = chords_clean.vocabulari(cfg.acords_vocabulari)
+    vores = chords_clean.unitats(pulsacions, durada)
+    p_unitat = chords_clean.probabilitats_per_unitat(probs, per_trama, vores, col_lapse)
+    desfasament = 1 if len(vores) - 1 > len(pulsacions) else 0  # unitat [0, p0)
+    canvis = chords_clean.canvis_crus(p_unitat)[desfasament:]
+    compas = meter.regularitza(pulsacions, corr["inicis_compas"], canvis)
+    inici_compas = np.array([False] * desfasament + [b["beat"] == 1 for b in compas["beats"]] + [False])
+    cami = chords_clean.viterbi(p_unitat, inici_compas[: len(p_unitat)])
+    min_unitats = max(1, int(round(cfg.acords_min_pulsacions)))
+    segs = chords_clean.segments(cami, etiquetes, vores, p_unitat, min_unitats)
+    return corr["correccions"], compas, segs, desfasament
 
 
 # Fases que veu l'usuari a l'app (en_fase); l'ordre és el de l'execució
@@ -186,16 +207,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     # 7. Postprocés de ritme i acords
     fase(6)
     t0 = time.perf_counter()
-    etiquetes, col_lapse = chords_clean.vocabulari(cfg.acords_vocabulari)
-    vores = chords_clean.unitats(ritme["pulsacions"], durada)
-    p_unitat = chords_clean.probabilitats_per_unitat(probs, per_trama, vores, col_lapse)
-    desfasament = 1 if len(vores) - 1 > len(ritme["pulsacions"]) else 0  # unitat [0, p0)
-    canvis = chords_clean.canvis_crus(p_unitat)[desfasament:]
-    compas = meter.regularitza(ritme["pulsacions"], ritme["inicis_compas"], canvis)
-    inici_compas = np.array([False] * desfasament + [b["beat"] == 1 for b in compas["beats"]] + [False])
-    cami = chords_clean.viterbi(p_unitat, inici_compas[: len(p_unitat)])
-    min_unitats = max(1, int(round(cfg.acords_min_pulsacions)))
-    segs = chords_clean.segments(cami, etiquetes, vores, p_unitat, min_unitats)
+    correccions_ritme, compas, segs, desfasament = ritme_i_acords(ritme, probs, per_trama, durada, cfg)
 
     tonalitat = key_mod.estima(segs)
     capo = key_mod.suggereix_capo(tonalitat) if (tonalitat and cfg.extra.get("aplicar_capo", True)) else 0
@@ -273,6 +285,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
                 "style": f"plantilles-v{groove.VERSIO}",
                 "asr": f"faster-whisper-{cfg.whisper_model}-{compute_type}",
                 "lyrics_align": "transfer-asr" if aparellades is not None else "cap",
+                "rhythm_fixes": str(len(correccions_ritme)),
                 "device": perfil.device, "device_name": perfil.nom},
         temps_etapes_s={**cache.temps, "total": round(time.perf_counter() - inici_total, 1)},
         avisos=avisos,

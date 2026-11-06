@@ -59,7 +59,11 @@ def regularitza(pulsacions: list[float], inicis_compas: list[float], canvis_acor
     if len(p) < 8:
         return {"bpm": 0.0, "time_signature": [4, 4],
                 "beats": [{"t": float(t), "bar": 1, "beat": k + 1} for k, t in enumerate(p)]}
-    bpm = 60.0 / float(np.median(np.diff(p)))
+    # Mitjana dels intervals propers a la mediana: els temps de Beat This! estan quantitzats a 0.02 s i
+    # la mediana sola s'hi enganxa (176.5 en lloc de 180 BPM)
+    ibi = np.diff(p)
+    mediana = float(np.median(ibi))
+    bpm = 60.0 / float(ibi[np.abs(ibi / mediana - 1) < 0.12].mean())
 
     vots_ic = np.zeros(len(p))
     if inicis_compas:

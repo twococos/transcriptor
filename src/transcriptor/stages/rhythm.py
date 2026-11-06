@@ -1,6 +1,8 @@
 """Etapa rhythm: pulsacions i inicis de compàs amb Beat This! (sense postprocés DBN/madmom).
 
-El resultat cru es regularitza a postprocess/meter.py (compàs constant per trams).
+La cache guarda el resultat cru. Al postprocés, postprocess/pulsacions.py en corregeix la graella
+(pulsacions falses als fills, trams a doble o meitat de tempo) i postprocess/meter.py en numera el
+compàs.
 """
 
 from __future__ import annotations
