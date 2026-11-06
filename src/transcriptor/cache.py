@@ -50,6 +50,22 @@ class Cache:
         self._desa_params(etapa, params)
         return resultat
 
+    def llegeix(self, etapa: str, params: dict) -> Any | None:
+        """Resultat JSON de l'etapa si és a la cache amb aquests paràmetres; None si no (no el calcula)."""
+        f = self.cami(f"{etapa}.json")
+        if f.exists() and self._params_ok(etapa, params):
+            self.cached.add(etapa)
+            return json.loads(f.read_text(encoding="utf-8"))
+        return None
+
+    def existent(self, etapa: str, nom: str, params: dict) -> Path | None:
+        """Fitxer de l'etapa si és a la cache amb aquests paràmetres; None si no (no el calcula)."""
+        f = self.cami(nom)
+        if f.exists() and self._params_ok(etapa, params):
+            self.cached.add(etapa)
+            return f
+        return None
+
     def fitxer(self, etapa: str, nom: str, params: dict, calcula: Callable[[Path], None]) -> Path:
         """Resultat en forma de fitxer (p. ex. WAV); `calcula(destí)` l'ha d'escriure."""
         f = self.cami(nom)

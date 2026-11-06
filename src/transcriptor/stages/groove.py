@@ -74,10 +74,26 @@ def _pic(env: np.ndarray, t: float, mig: float) -> float:
     return float(env[a:b].max()) if b > a else 0.0
 
 
-def calcula(mescla: np.ndarray, veu: np.ndarray, beats: list[dict], time_signature) -> dict | None:
-    """Empremta a partir de senyals mono a SR. None si no hi ha prou compassos complets."""
+def envolupants(mescla: np.ndarray, veu: np.ndarray) -> dict:
+    """La part que necessita l'àudio (senyals mono a SR): {"env": atacs per banda (3, trames) a SR/HOP
+    trames/s, "planor": planor espectral mediana als atacs forts de la banda mitja}. No depèn de les
+    pulsacions: es desa a la cache i al paquet de dades crues (paquet.py)."""
     n = min(len(mescla), len(veu))
     acomp = (mescla[:n] - veu[:n]).astype(np.float32)
+    env, planor = _envolupants(acomp)
+    pics = env[1]
+    trames = np.where(pics >= np.quantile(pics, 0.9))[0] if len(pics) else np.array([], dtype=int)
+    planor_atacs = float(np.median(planor[trames])) if len(trames) else 0.0
+    return {"env": env.astype(np.float32), "planor": planor_atacs}
+
+
+def calcula(mescla: np.ndarray, veu: np.ndarray, beats: list[dict], time_signature) -> dict | None:
+    """Empremta a partir de senyals mono a SR. None si no hi ha prou compassos complets."""
+    return de_envolupants(envolupants(mescla, veu), beats, time_signature)
+
+
+def de_envolupants(envs: dict, beats: list[dict], time_signature) -> dict | None:
+    """Empremta a partir de les envolupants (sense àudio). None si no hi ha prou compassos complets."""
     numerador = int(time_signature[0])
     compost = es_compost(time_signature)
     franges = 2 if compost else 4
@@ -85,7 +101,7 @@ def calcula(mescla: np.ndarray, veu: np.ndarray, beats: list[dict], time_signatu
     if len(compassos) < MIN_COMPASSOS:
         return None
 
-    env, planor = _envolupants(acomp)
+    env = envs["env"]
     per_compas = numerador * franges
     matrius = np.zeros((3, len(compassos), per_compas), dtype=np.float32)
     swing_mig, swing_terc, swing_quart = [], [], []
@@ -119,12 +135,6 @@ def calcula(mescla: np.ndarray, veu: np.ndarray, beats: list[dict], time_signatu
     mitja = matrius[1] / (matrius[1].max(axis=1, keepdims=True) + 1e-6)
     densitat = float((mitja > 0.5).mean())
 
-    # Planor espectral als atacs forts de la banda mitja
-    pics = env[1]
-    llindar = np.quantile(pics, 0.9)
-    trames = np.where(pics >= llindar)[0]
-    planor_atacs = float(np.median(planor[trames])) if len(trames) else 0.0
-
     # Irregularitat del tempo: desviació absoluta mediana dels intervals entre temps, relativa a la
     # mediana. Robusta als forats del detector (un temps perdut no la dispara); una cançó a tempo
     # lliure (rubato) dona valors alts.
@@ -151,13 +161,17 @@ def calcula(mescla: np.ndarray, veu: np.ndarray, beats: list[dict], time_signatu
         "high": [round(float(x), 3) for x in perfils[2]],
         "compassos": len(compassos),
         "densitat": round(densitat, 3),
-        "planor": round(planor_atacs, 4),
+        "planor": round(envs["planor"], 4),
         "swing": round(swing, 3) if swing is not None else None,
         "regularitat": round(regularitat, 4),
     }
 
 
-def empremta(cami_mescla: Path, cami_veu: Path, beats: list[dict], time_signature) -> dict | None:
+def envolupants_de_fitxers(cami_mescla: Path, cami_veu: Path) -> dict:
     mescla, _ = llegeix(cami_mescla, sr=SR, mono=True)
     veu, _ = llegeix(cami_veu, sr=SR, mono=True)
-    return calcula(mescla, veu, beats, time_signature)
+    return envolupants(mescla, veu)
+
+
+def empremta(cami_mescla: Path, cami_veu: Path, beats: list[dict], time_signature) -> dict | None:
+    return de_envolupants(envolupants_de_fitxers(cami_mescla, cami_veu), beats, time_signature)
