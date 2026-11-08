@@ -33,6 +33,7 @@ def test_alineacio_interpola_paraules_no_cantades_per_l_asr():
 def test_text_de_content_treu_acords_i_seccions():
     c = "<sec>Estrofa 1</sec>\n<ch>Am</ch>L'avi Sis<ch>E</ch>et\n<ch>A</ch>    <ch>E</ch>"
     assert text_de_content(c) == "L'avi Siset"
+    assert text_de_content("| <ch>A</ch>.   .   | <ch>E</ch>.   .   | (x2)\nhola") == "hola"
 
 
 def test_linia_amb_acords():
@@ -73,9 +74,22 @@ def test_merge_estructura_i_render():
     content = render.content(elements, seccions)
     linies = content.split("\n")
     assert linies[0] == "<sec>Intro</sec>"
-    assert linies[1] == "<ch>A</ch>    <ch>E</ch>"
+    assert linies[1] == "<ch>A</ch>|   '   '   '   |   '   '   '   <ch>E</ch>|   '   '   '   |   '   '   '"
     assert "<ch>D</ch>Aquesta es la tornada" in content
     assert "" not in linies
+    # L'acord que ja sonava no es repeteix a l'inici de la línia següent
+    assert "\nque es repeteix sempre\n" in content
+
+
+def test_compassos_d_instrumental():
+    puls = [[0, 1, "A"], [1, 2, None], [2, 3, "C#m"], [3, 4, "D"], [4, 1, None], [5, 2, None]]
+    # C#m tapa dos temps: D es desplaça perquè no s'hi trepitgi. Sense barra final (la veu entra al temps 3)
+    assert render.linies_compassos(puls) == ["<ch>A</ch>|   '   <ch>C#m</ch>'       <ch>D</ch>'   |   '"]
+    # Zona que comença a mig compàs: el primer temps no és barra
+    assert render.linies_compassos([[0, 3, "G"], [1, 4, None], [2, 1, "D"]]) == ["<ch>G</ch>'   '   <ch>D</ch>|"]
+    puls = [[t, t % 4 + 1, "A" if t % 4 == 0 else None] for t in range(20)]
+    linies = render.linies_compassos(puls)
+    assert len(linies) == 2 and linies[1].count("<ch>A</ch>") == 1  # 4 compassos per línia
 
 
 def test_render_amb_capo_transposa_a_formes():

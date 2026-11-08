@@ -2,15 +2,17 @@
 
 Elements (en ordre temporal):
 - {"tipus": "linia", "start", "end", "word_range", "text", "acords": [[posició, etiqueta, t], ...]}
-- {"tipus": "instrumental", "start", "end", "acords": [[etiqueta, t], ...]}
+- {"tipus": "instrumental", "start", "end", "acords": [[etiqueta, t], ...],
+   "pulsacions": [[t, temps del compàs, etiqueta o None], ...]}  (per dibuixar-ne els compassos)
 
 Regles de col·locació:
 - Un acord pertany a la línia si cau entre l'inici de la línia (menys mitja pulsació de tolerància)
   i l'inici de la següent, sempre que no sigui en un tram llarg sense veu (llavors és instrumental).
 - Dins la línia, va a la paraula que sona en aquell moment, a la lletra proporcional al temps
   (com fa la BD: "Sis<ch>E</ch>et"). Si cau en una pausa entre paraules, a l'inici de la següent.
-- Si una línia comença amb un acord que ja sonava (sense canvi just a l'inici), es repeteix a la
-  posició 0 perquè cada línia es pugui llegir sola, com a la BD.
+- L'acord que ja sonava a l'inici d'una línia no es repeteix: s'entén que dura fins al següent.
+  (La BD sí que el repeteix, però amb anacrusi surt l'acord anterior a l'inici de cada línia i
+  l'acord nou dues lletres més enllà, cosa que confon.)
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ COMPASSOS_MIN_INSTRUMENTAL = 1.5  # un buit sense veu més llarg que això és i
 MARGE_REPETICIO_INICI = 2  # lletres: un canvi d'acord tan a prop de l'inici es mou a la posició 0
 PENALITZACIO_POSTERIOR = 2.5  # cost relatiu de posar l'acord en una paraula que comença després del canvi
 AVANC_ACORD_S = 0.1  # s: es tria la paraula com si l'acord canviés aquest temps abans
+COMPASSOS_FINAL = 1  # compassos que es mostren a partir de l'últim acord d'un instrumental sense lletra després
 
 
 def _durada_compas(beats: list[dict]) -> float:
@@ -59,6 +62,25 @@ def _posicio(paraules: list[dict], rang: tuple[int, int], t: float, tol: float) 
     durada = max(w["end"] - w["start"], 1e-3)
     frac = min(max((t - w["start"]) / durada, 0.0), 0.999)
     return offsets[k - inici] + int(frac * len(w["text"]))
+
+
+def _pulsacions(acords: list[list], beats: list[dict], fi: float, tol: float) -> list[list]:
+    """Pulsacions des del primer acord de la zona fins a `fi`, amb l'acord que hi comença (o None).
+
+    Cada acord va a la pulsació més propera (els acords ja es calculen per pulsació).
+    """
+    ts = [b["t"] for b in beats]
+    if not ts:
+        return []
+
+    def propera(t: float) -> int:
+        k = bisect.bisect_left(ts, t)
+        return min((j for j in (k - 1, k) if 0 <= j < len(ts)), key=lambda j: abs(ts[j] - t))
+
+    etiquetes = {propera(t): et for et, t in acords}
+    inici = min(etiquetes)
+    fi_idx = max(bisect.bisect_left(ts, fi - tol), max(etiquetes) + 1)
+    return [[ts[j], beats[j]["beat"], etiquetes.get(j)] for j in range(inici, fi_idx)]
 
 
 def colloca(paraules: list[dict], rangs: list[list[int]], acords: list[dict], beats: list[dict],
@@ -100,16 +122,19 @@ def colloca(paraules: list[dict], rangs: list[list[int]], acords: list[dict], be
         instrumental["acords"].append([ac["label"], t])
         instrumental["end"] = ac["end"]
 
-    # Repeteix a l'inici de línia l'acord que ja sonava
-    for linia in linies:
-        # Si ja hi ha un canvi a les primeres lletres, repetir l'anterior només fa soroll
+    # Un canvi a les primeres lletres va a l'inici de la línia. Un "canvi" al mateix acord que ja
+    # sonava no s'escriu.
+    anterior = None
+    for linia in sorted(linies + elements, key=lambda e: e["start"]):
+        if linia["tipus"] != "linia":
+            anterior = linia["acords"][-1][0]
+            continue
+        linia["acords"] = [ac for ac, prev in zip(linia["acords"], [[None, anterior]] + linia["acords"])
+                           if ac[1] != prev[1]]
+        if linia["acords"]:
+            anterior = linia["acords"][-1][1]
         if linia["acords"] and linia["acords"][0][0] <= MARGE_REPETICIO_INICI:
             linia["acords"][0][0] = 0
-            continue
-        sonant = [ac for ac in acords if ac["start"] < linia["start"] - tol < ac["end"]
-                  or ac["start"] <= linia["start"] < ac["end"]]
-        if sonant:
-            linia["acords"].insert(0, [0, sonant[-1]["label"], linia["start"]])
 
     # Posicions estrictament creixents (dos acords no poden compartir lletra)
     for linia in linies:
@@ -122,7 +147,10 @@ def colloca(paraules: list[dict], rangs: list[list[int]], acords: list[dict], be
     resultat: list[dict] = []
     per_posicio: dict[int, list[dict]] = {}
     for z in elements:
-        per_posicio.setdefault(z.pop("_abans_de"), []).append(z)
+        k = z.pop("_abans_de")
+        fi = inicis[k] if k < len(linies) else min(z["end"], z["acords"][-1][1] + compas * COMPASSOS_FINAL)
+        z["pulsacions"] = _pulsacions(z["acords"], beats, fi, tol)
+        per_posicio.setdefault(k, []).append(z)
     for k, linia in enumerate(linies):
         resultat.extend(per_posicio.get(k, []))
         resultat.append(linia)

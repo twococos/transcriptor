@@ -54,6 +54,8 @@ def text_de_content(content: str) -> str:
                 linies.extend(bloc)
             inici_bloc = len(linies)
             continue
+        if not re.search(r"\w", _RE_REPETICIO_FINAL.sub("", neta)):
+            continue  # compassos d'un instrumental ("| .   .   |") o una línia sense lletra
         m = _RE_REPETICIO_FINAL.search(neta)
         if m:
             neta = neta[: m.start()].strip()
