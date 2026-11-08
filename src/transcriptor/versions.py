@@ -22,6 +22,7 @@ CRUES = {"fetch", "separate", "rhythm", "chords", "lyrics_asr", "groove"}
 CANVIS: dict[str, set[str]] = {
     "0.1.8": {"groove"},  # estil rítmic de l'acompanyament (abans no hi era)
     "0.1.9": {POSTPROCES},  # correcció de la graella de pulsacions i BPM per mitjana
+    "0.1.10": {POSTPROCES},  # temps de la primera paraula de frase de Whisper (postprocess/temps_asr.py)
 }
 
 

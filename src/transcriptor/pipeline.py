@@ -25,7 +25,7 @@ from .device import Perfil, configura_fils, detecta
 from .notation import transposa
 from .paquet import Crues
 from .postprocess import chords_clean, key as key_mod, lines as lines_mod, meter, pulsacions as pulsacions_mod
-from .postprocess import style as style_mod
+from .postprocess import style as style_mod, temps_asr
 from .schema import (Acord, Font, Groove, ImportResult, Linia, Meta, Paraula, Pulsacio, Ritme, Seccio,
                      SongAnalysis, Tempo, Tonalitat)
 from .stages import chords, fetch, groove, lyrics_align, lyrics_asr, lyrics_source, rhythm, separate
@@ -282,7 +282,9 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     c = dades
     titol, artista = _titol_artista(c.meta, entrada)
     durada = c.durada
-    asr = c.asr
+    # Temps de Whisper a les vores dels trams de veu (vegeu temps_asr.py): abans de tot el que en fa ús
+    temps = temps_asr.corregeix(c.asr["paraules"], c.asr["segments"])
+    asr = {**c.asr, "paraules": temps["paraules"], "segments": temps["segments"]}
     if c.lletra is None or entrada.text_usuari or entrada.content_bd:
         # La lletra de la BD pot haver canviat des que es van fer les dades crues: la d'ara mana
         font_lletra = _font_lletra(cache, entrada, cfg, titol, artista, durada)
@@ -373,6 +375,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
                 "asr": f"faster-whisper-{cfg.whisper_model}-{compute_type}",
                 "lyrics_align": "transfer-asr" if aparellades is not None else "cap",
                 "rhythm_fixes": str(len(correccions_ritme)),
+                "asr_fixes": str(len(temps["correccions"])),
                 "device": perfil.device, "device_name": perfil.nom},
         temps_etapes_s={**cache.temps, "total": round(time.perf_counter() - inici_total, 1)},
         avisos=avisos,

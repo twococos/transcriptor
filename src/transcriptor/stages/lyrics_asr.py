@@ -1,6 +1,7 @@
 """Etapa lyrics_asr: transcripció de la veu separada amb faster-whisper.
 
 Es fa sempre, també quan tenim el text: serveix per transferir-ne els temps (lyrics_align.py).
+Els temps de les paraules a les vores dels trams de veu es corregeixen al postprocés (temps_asr.py).
 """
 
 from __future__ import annotations
