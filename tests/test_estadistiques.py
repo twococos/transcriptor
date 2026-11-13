@@ -67,8 +67,8 @@ def test_stats_de_cancons_antigues(tmp_path, monkeypatch):
     monkeypatch.setenv("TX_HOME", str(tmp_path))
     a = _analisi()
     a.models["lyrics_aparellades"] = "0.9"
-    fetes.desa(1, {"title": "Vella"}, a.model_dump_json(), None, 300)
-    fetes.desa(2, {"title": "Nova"}, a.model_dump_json(), None, 300, stats={"v": 1, "checks": {}})
+    fetes.desa(1, {"title": "Vella"}, a.model_dump_json(), 300)
+    fetes.desa(2, {"title": "Nova"}, a.model_dump_json(), 300, stats={"v": 1, "checks": {}})
     vella, nova = sorted(fetes.llista(), key=lambda f: f.titol, reverse=True)
     assert vella.stats is None and nova.stats == {"v": 1, "checks": {}}
     s = fetes.stats_de(vella)

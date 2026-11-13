@@ -533,7 +533,7 @@ class LlistaFetes(ttk.Frame):
         resum = [_data(feta.data)]
         if feta.segons:
             resum.append(f"{_durada(feta.segons)} de càlcul")
-        resum.append(_mida(feta.mida) if feta.te_audio else "YouTube")
+        resum.append(_mida(feta.mida))
         lloc = x - 8
         c.create_text(0, y + self.alt_nom // 2, anchor="w", text=_retalla(feta.nom, self.mesura_nom, lloc),
                       font=self.font_nom, fill=self.color_text, tags=fila)
@@ -663,6 +663,8 @@ def _retalla(text: str, font: tkfont.Font, amplada: int) -> str:
 class App:
     def __init__(self) -> None:
         self.prefs = Preferencies.carrega()
+        if n := fetes.esborra_audios_vells():  # el visor ja no els fa servir (0.1.12)
+            log.info("Esborrats %d àudios de cançons fetes", n)
         self.cues: queue.Queue = queue.Queue()  # actualitzacions d'estat des del fil del worker
         self.worker: Worker | None = None
         self.fil: threading.Thread | None = None
@@ -736,7 +738,6 @@ class App:
         self.var_inactiu = tk.BooleanVar(value=p.nomes_inactiu)
         self.var_arrencada = tk.BooleanVar(value=windows.arrencada_activa())
         self.var_auto = tk.BooleanVar(value=p.actiu)
-        self.var_audio = tk.BooleanVar(value=p.desa_audio)
 
     def _capcalera(self, pare) -> None:
         c = ttk.Frame(pare)
@@ -815,8 +816,7 @@ class App:
         o.pack(fill="x", pady=(12, 0))
         for text, var in [("Només quan no faig servir l'ordinador (5 min sense teclat ni ratolí)", self.var_inactiu),
                           ("Arrenca amb Windows", self.var_arrencada),
-                          ("Comença a treballar en obrir l'app", self.var_auto),
-                          ("Desa l'àudio de les cançons fetes per al visor (~3 MB cadascuna)", self.var_audio)]:
+                          ("Comença a treballar en obrir l'app", self.var_auto)]:
             ttk.Checkbutton(o, text=text, variable=var, style="Switch.TCheckbutton").pack(anchor="w", pady=3)
 
         b = ttk.Frame(f)
@@ -979,7 +979,6 @@ class App:
             self.prefs.max_fils = 0
         self.prefs.nomes_inactiu = self.var_inactiu.get()
         self.prefs.actiu = self.var_auto.get()
-        self.prefs.desa_audio = self.var_audio.get()
         self.prefs.arrencar_amb_windows = self.var_arrencada.get()
         windows.configura_arrencada(self.prefs.arrencar_amb_windows, ordre_arrencada())
         self.prefs.desa()
@@ -1035,9 +1034,8 @@ class App:
                 return "l'ordinador s'està fent servir"
         return None
 
-    def _desa_feta(self, feina: dict, res, wav: Path, segons: float) -> None:
-        fetes.desa(feina["id"], feina, res.analisi.model_dump_json(), wav, segons, self.prefs.desa_audio,
-                   stats=res.estadistiques)
+    def _desa_feta(self, feina: dict, res, segons: float) -> None:
+        fetes.desa(feina["id"], feina, res.analisi.model_dump_json(), segons, stats=res.estadistiques)
         self.cues.put(("fetes", None))
         self.cues.put(("actualitza_classificacions", None))
 

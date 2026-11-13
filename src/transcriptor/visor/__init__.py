@@ -1,8 +1,9 @@
 """Visor de sincronització: reprodueix la cançó i mostra en directe pulsació, compàs, paraula i acord.
 
-Serveix una pàgina local (visor.html) amb l'`analysis.json` i, si n'hi ha, l'àudio. Sense àudio local
-fa servir el vídeo de YouTube de `source.youtube_id` (l'iframe de YouTube no funciona des de file://,
-per això cal el servidor).
+Serveix una pàgina local (visor.html) amb l'`analysis.json`. Reprodueix el vídeo de YouTube de
+`source.youtube_id` (l'iframe de YouTube no funciona des de file://, per això cal el servidor); l'àudio
+local només es fa servir si es passa explícitament, si l'anàlisi no té vídeo o si el vídeo no es pot
+incrustar.
 """
 
 from __future__ import annotations
@@ -19,21 +20,18 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 PAGINA = Path(__file__).with_name("visor.html")
-mimetypes.add_type("audio/ogg", ".opus")  # l'àudio que desa l'app (fetes.py)
+mimetypes.add_type("audio/ogg", ".opus")
 
 
-def troba_audio(analisi: dict, json_path: Path) -> Path | None:
-    """Un `audio.*` al costat de l'anàlisi (el que desa l'app, fetes.py) o l'àudio d'origen si encara és
-    al disc (bench: work/bench/audio/<id>.*)."""
-    for f in json_path.parent.glob("audio.*"):
-        return f
+def troba_audio(analisi: dict) -> Path | None:
+    """L'àudio d'origen si encara és al disc (bench: work/bench/audio/<id>.*)."""
     fitxer = (analisi.get("source") or {}).get("fitxer")
     if fitxer and Path(fitxer).is_file():
         return Path(fitxer)
     return None
 
 
-def _handler(json_path: Path, audio: Path | None):
+def _handler(json_path: Path, audio: Path | None, explicit: bool):
     class H(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):  # sense soroll a la consola
             log.debug(fmt, *args)
@@ -90,7 +88,7 @@ def _handler(json_path: Path, audio: Path | None):
             elif ruta == "/analysis.json":
                 self._envia(json_path.read_bytes(), "application/json; charset=utf-8")
             elif ruta == "/info.json":
-                info = {"audio": audio.name if audio else None, "json": str(json_path)}
+                info = {"audio": audio.name if audio else None, "prefereix_audio": explicit, "json": str(json_path)}
                 self._envia(json.dumps(info, ensure_ascii=False).encode("utf-8"), "application/json")
             elif ruta == "/audio" and audio:
                 self._audio()
@@ -109,10 +107,10 @@ def inicia(cami: str | Path, audio: str | Path | None = None, port: int = 0
     if not json_path.is_file():
         raise FileNotFoundError(f"No trobo {json_path}")
     analisi = json.loads(json_path.read_text(encoding="utf-8"))
-    fitxer_audio = Path(audio) if audio else troba_audio(analisi, json_path)
+    fitxer_audio = Path(audio) if audio else troba_audio(analisi)
     if fitxer_audio and not fitxer_audio.is_file():
         raise FileNotFoundError(f"No trobo l'àudio {fitxer_audio}")
-    srv = ThreadingHTTPServer(("127.0.0.1", port), _handler(json_path, fitxer_audio))
+    srv = ThreadingHTTPServer(("127.0.0.1", port), _handler(json_path, fitxer_audio, bool(audio)))
     return srv, f"http://127.0.0.1:{srv.server_address[1]}/", analisi, fitxer_audio
 
 
@@ -123,8 +121,8 @@ def serveix(cami: str, audio: str | None = None, port: int = 8765, obre: bool = 
         print(e)
         return 1
     json_path = Path(cami) / "analysis.json" if Path(cami).is_dir() else Path(cami)
-    font = fitxer_audio or (f"YouTube {analisi['source']['youtube_id']}"
-                            if analisi.get("source", {}).get("youtube_id") else "cap (arrossega'n un a la pàgina)")
+    youtube_id = (analisi.get("source") or {}).get("youtube_id")
+    font = (fitxer_audio if audio or not youtube_id else f"YouTube {youtube_id}") or "cap (arrossega'n un a la pàgina)"
     print(f"Visor: {url}\n  anàlisi: {json_path}\n  àudio:   {font}\n(Ctrl+C per aturar)")
     if obre:
         threading.Timer(0.3, webbrowser.open, args=(url,)).start()

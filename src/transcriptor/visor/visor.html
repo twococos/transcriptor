@@ -45,6 +45,7 @@ details.avisos { margin-top: 6px; font-size: 13px; color: var(--warn); }
 #reproductor { margin-top: 12px; display: grid; gap: 10px; }
 #yt { width: 100%; max-width: 480px; aspect-ratio: 16/9; }
 #yt:empty { display: none; }
+#yt iframe { width: 100%; height: 100%; border: 0; border-radius: 6px; }
 audio { width: 100%; }
 button, select, input[type=number] { font: inherit; font-size: 13px; color: var(--text); background: var(--control);
   border: 1px solid var(--line); border-radius: 4px; padding: 5px 11px; }
@@ -175,7 +176,7 @@ kbd { font-size: 11px; border: 1px solid var(--line); border-radius: 4px; paddin
 "use strict";
 const $ = (id) => document.getElementById(id);
 let A = null;            // analysis.json
-let info = { json: "" }; // del servidor
+let info = { json: "" }; // del servidor: { audio, prefereix_audio, json }
 let jugador = null;      // { temps(), play(), pause(), aturat(), salta(t), velocitat(r), nom }
 let desplacament = 0;    // s
 let zoom = 12;           // segons visibles a la línia de temps
@@ -195,8 +196,10 @@ async function inicia() {
   try { info = await (await fetch("info.json")).json(); } catch (e) { /* obert sense servidor */ }
   try { carregaAnalisi(await (await fetch("analysis.json")).json()); }
   catch (e) { $("meta").textContent = "No s'ha pogut carregar analysis.json: arrossega'n un a la pàgina."; return; }
-  if (info.audio) usaAudio("audio", info.audio);
-  else if (A.source && A.source.youtube_id) usaYouTube(A.source.youtube_id);
+  // El vídeo de YouTube, llevat que es demani l'àudio local (tx visor --audio) o que no n'hi hagi
+  const yt = A.source && A.source.youtube_id;
+  if (info.audio && (info.prefereix_audio || !yt)) usaAudio("audio", info.audio);
+  else if (yt) usaYouTube(yt);
 }
 
 function carregaAnalisi(dades) {
@@ -251,25 +254,66 @@ function usaAudio(url, nom) {
 /** `#t=83.5` a l'URL: comença en aquest punt. */
 const tInicial = () => +((/t=([\d.]+)/.exec(location.hash) || [])[1] || 0);
 
+/**
+ * Temps continu a partir d'una lectura que avança a salts (getCurrentTime() de YouTube canvia quan arriba un
+ * missatge de l'iframe). Les diferències petites no mouen la posició sinó la velocitat, fins que quadra; les
+ * grans (un salt, una aturada per carregar) es prenen de cop. Com el Smoother de src/lib/player/clocks.ts
+ * del canconer, en segons.
+ */
+function suavitzador() {
+  let base = 0, baseRellotge = 0, ultima = NaN, correccio = 0;
+  return {
+    reinicia() { ultima = NaN; correccio = 0; },
+    llegeix(r, sonant, rate) {
+      const ara = performance.now();
+      const est = sonant ? base + (ara - baseRellotge) / 1000 * rate * (1 + correccio) : base;
+      if (r === ultima) return est;
+      const primera = Number.isNaN(ultima), err = r - est;
+      ultima = r; baseRellotge = ara;
+      if (primera || !sonant || Math.abs(err) > 0.4) { base = r; correccio = 0; }
+      else { base = est; correccio = Math.min(Math.max(err / rate, -0.08), 0.08); }
+      return base;
+    },
+  };
+}
+const YT_ERRORS_INCRUSTAT = new Set([100, 101, 150, 153]);  // el vídeo no es pot reproduir incrustat
+
 function usaYouTube(id) {
-  $("zonaFitxer").firstChild.textContent = "Vídeo de YouTube (sincronització aproximada, ±50 ms). Per a més precisió, arrossega aquí l'àudio · ";
+  if (jugador && jugador.destrueix) jugador.destrueix();
+  $("contenidorAudio").replaceChildren();
+  $("zonaFitxer").style.display = "";
+  $("zonaFitxer").firstChild.textContent = "Vídeo de YouTube. Per a més precisió, arrossega aquí l'àudio de la cançó · ";
+  // L'API substitueix l'element per l'iframe: se li dona un fill propi
+  const muntatge = document.createElement("div");
+  $("yt").replaceChildren(muntatge);
   const crea = () => {
-    const p = new YT.Player("yt", { videoId: id, playerVars: { rel: 0, playsinline: 1, modestbranding: 1 },
-      events: { onReady: () => { p.setPlaybackRate(+$("velocitat").value); if (tInicial()) p.seekTo(tInicial(), true); } } });
-    // getCurrentTime() avança a salts: s'interpola amb el rellotge mentre sona
-    let rep = -1, quan = 0;
+    let estat = -1, rate = +$("velocitat").value, ultim = 0;
+    const suau = suavitzador();
+    const p = new YT.Player(muntatge, { host: "https://www.youtube-nocookie.com", videoId: id, width: "100%", height: "100%",
+      playerVars: { rel: 0, playsinline: 1, modestbranding: 1, iv_load_policy: 3 },
+      events: {
+        onReady: () => { p.setPlaybackRate(rate); if (tInicial()) p.seekTo(tInicial(), true); },
+        onStateChange: (e) => { estat = e.data; suau.reinicia(); },
+        onPlaybackRateChange: (e) => { rate = e.data; $("velocitat").value = String(rate); suau.reinicia(); },
+        onError: (e) => {
+          if (info.audio) { usaAudio("audio", info.audio); return; }
+          $("zonaFitxer").firstChild.textContent = YT_ERRORS_INCRUSTAT.has(e.data)
+            ? "Aquest vídeo no es pot reproduir fora de YouTube. Arrossega aquí l'àudio de la cançó · "
+            : `YouTube no ha pogut reproduir el vídeo (error ${e.data}). Arrossega aquí l'àudio de la cançó · `;
+        },
+      } });
     jugador = { nom: "YouTube",
-      temps: () => { const r = p.getCurrentTime ? p.getCurrentTime() || 0 : 0, ara = performance.now();
-        if (r !== rep) { rep = r; quan = ara; return r; }
-        return p.getPlayerState && p.getPlayerState() === 1 ? r + (ara - quan) / 1000 * p.getPlaybackRate() : r; },
-      play: () => p.playVideo(), pause: () => p.pauseVideo(),
-      aturat: () => !p.getPlayerState || p.getPlayerState() !== 1,
-      salta: (t) => p.seekTo(Math.max(0, t), true), velocitat: (r) => p.setPlaybackRate(r),
+      temps: () => { try { ultim = suau.llegeix(p.getCurrentTime() || 0, estat === 1, rate); } catch (e) { /* l'iframe encara no respon */ }
+        return ultim; },
+      play: () => p.playVideo(), pause: () => p.pauseVideo(), aturat: () => estat !== 1,
+      salta: (t) => { p.seekTo(Math.max(0, t), true); ultim = Math.max(0, t); suau.reinicia(); },
+      velocitat: (r) => p.setPlaybackRate(r),
       destrueix: () => { try { p.destroy(); } catch (e) { } } };
   };
   if (window.YT && YT.Player) crea();
-  else { window.onYouTubeIframeAPIReady = crea;
-    const s = document.createElement("script"); s.src = "https://www.youtube.com/iframe_api"; document.head.append(s); }
+  else { window.onYouTubeIframeAPIReady = crea;  // si se'n demana un altre mentre carrega, només el darrer
+    if (!document.querySelector("script[src*='youtube.com/iframe_api']")) {
+      const s = document.createElement("script"); s.src = "https://www.youtube.com/iframe_api"; document.head.append(s); } }
 }
 
 function fitxerRebut(f) {

@@ -22,7 +22,6 @@ import platform
 import threading
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Callable
 
 import requests
@@ -144,9 +143,9 @@ class Worker:
     def __init__(self, client: Client, cfg: Config, perfil: Perfil,
                  en_canvi: Callable[[EstatWorker], None] | None = None,
                  pot_treballar: Callable[[], str | None] | None = None,
-                 en_feta: Callable[[dict, object, Path, float], None] | None = None):
+                 en_feta: Callable[[dict, object, float], None] | None = None):
         """`pot_treballar()` retorna None si es pot agafar feina, o el motiu per esperar.
-        `en_feta(feina, resultat, wav, segons)`: es crida quan una feina acaba bé, abans d'esborrar l'àudio."""
+        `en_feta(feina, resultat, segons)`: es crida quan una feina acaba bé."""
         self.client = client
         self.cfg = cfg
         self.perfil = perfil
@@ -264,7 +263,7 @@ class Worker:
             self.estat.historial.append({"titol": self.estat.feina_actual, "segons": round(durada), "ok": True})
             if self.en_feta:
                 try:
-                    self.en_feta(feina, res, cache.cami("audio.wav"), durada)
+                    self.en_feta(feina, res, durada)
                 except Exception:  # noqa: BLE001 — desar-la en local no ha de fer fallar la feina
                     log.exception("No s'ha pogut desar la feina %s en local", id_feina)
         except InterruptedError:

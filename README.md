@@ -54,8 +54,8 @@ Revisar a ull la sincronització d'una anàlisi (pulsació, compàs, acord i par
 temps, clic de metrònom, acords sonors i notes d'errors copiables):
 
 ```bash
-uv run --no-sync tx visor work/bench/resultats/final/1      # àudio local (source.fitxer)
-uv run --no-sync tx visor out/J-fFsUFAnUc                   # sense àudio al disc: vídeo de YouTube
+uv run --no-sync tx visor out/J-fFsUFAnUc                   # vídeo de YouTube (source.youtube_id)
+uv run --no-sync tx visor work/bench/resultats/final/1      # sense vídeo: àudio local (source.fitxer)
 uv run --no-sync tx visor out/<id> --audio cançó.mp3        # àudio explícit (més precís que YouTube)
 ```
 
@@ -106,5 +106,6 @@ El Transcriptor no envia cap informació a cap sistema de la xarxa si l'usuari n
   resultat de les feines, la versió del Transcriptor, el nom de l'ordinador i el dispositiu de
   càlcul (CPU o el model i la memòria de la GPU). Sense token
   configurat, no s'hi connecten.
-- L'app desa en aquest ordinador les cançons que ha fet (anàlisi i, opcionalment, l'àudio) per
-  obrir-les al visor. No s'envien enlloc i es poden esborrar des de l'app.
+- L'app desa en aquest ordinador l'anàlisi de les cançons que ha fet per obrir-les al visor, que
+  reprodueix el vídeo de YouTube (incrustat des de youtube-nocookie.com). L'àudio baixat s'esborra en
+  acabar cada feina. Les anàlisis no s'envien enlloc i es poden esborrar des de l'app.
