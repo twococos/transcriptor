@@ -21,7 +21,7 @@ def test_desa_llista_i_esborra(tmp_path, monkeypatch):
 
     srv, url, _analisi, audio = inicia(llista[1].dir)  # el visor farà servir YouTube
     srv.server_close()
-    assert audio is None and url.startswith("http://127.0.0.1:")
+    assert audio is None and url.startswith("http://localhost:")
 
     fetes.esborra(llista[0])
     assert [f.titol for f in fetes.llista()] == ["Bon dia"]

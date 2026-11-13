@@ -111,7 +111,8 @@ def inicia(cami: str | Path, audio: str | Path | None = None, port: int = 0
     if fitxer_audio and not fitxer_audio.is_file():
         raise FileNotFoundError(f"No trobo l'àudio {fitxer_audio}")
     srv = ThreadingHTTPServer(("127.0.0.1", port), _handler(json_path, fitxer_audio, bool(audio)))
-    return srv, f"http://127.0.0.1:{srv.server_address[1]}/", analisi, fitxer_audio
+    # localhost i no 127.0.0.1: YouTube no deixa reproduir incrustats alguns vídeos des d'una adreça IP
+    return srv, f"http://localhost:{srv.server_address[1]}/", analisi, fitxer_audio
 
 
 def serveix(cami: str, audio: str | None = None, port: int = 8765, obre: bool = True) -> int:
