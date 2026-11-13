@@ -45,11 +45,12 @@ def _mitjana(valors: list[float], pesos: list[float] | None = None) -> float | N
 
 
 def calcula(analisi: SongAnalysis, perfil: Perfil, cached: set[str], alineacio: dict | None,
-            confs_asr: list[float], vocabulari: str) -> dict:
+            confs_asr: list[float], vocabulari: str, fonts: dict | None = None) -> dict:
     """Objecte `stats` (v1) sense els camps que només sap el worker (`app_version`, `timing.wall_s`).
 
     `alineacio`: el resultat de `lyrics_align.alinea` (None si la lletra ve de Whisper).
-    `confs_asr`: la probabilitat de Whisper de cada paraula sentida."""
+    `confs_asr`: la probabilitat de Whisper de cada paraula sentida.
+    `fonts`: el resum de les fonts d'acords externes (fonts/aplica.py), si n'hi ha hagut."""
     temps = dict(analisi.temps_etapes_s)
     total = temps.pop("total", None)
     paraules = analisi.words
@@ -93,6 +94,6 @@ def calcula(analisi: SongAnalysis, perfil: Perfil, cached: set[str], alineacio: 
         "models": {k: v for k, v in analisi.models.items()
                    if k not in ("device", "device_name", "lyrics_align", "lyrics_aparellades")},
         "warnings": list(analisi.avisos),
-        "checks": {},
+        "checks": {"chords": fonts} if fonts else {},
     }
     return stats

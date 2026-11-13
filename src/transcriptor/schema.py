@@ -98,6 +98,20 @@ class Ritme(BaseModel):
     arpeggiated: float | None = None
 
 
+class FontAcords(BaseModel):
+    """Una tab d'acords externa trobada per a la cançó (fonts/aplica.py)."""
+    site: str
+    url: str
+    rating: float | None = None
+    votes: int | None = None
+    manual: bool = False
+    fit: float | None = None  # fracció dels seus acords que l'àudio admet
+    matched: float | None = None  # fracció de la seva lletra aparellada amb l'anàlisi
+    weight: float = 0.0  # pes al consens (0 = descartada)
+    group: int | None = None  # tabs del mateix grup són còpies l'una de l'altra
+    used: bool = False
+
+
 class SongAnalysis(BaseModel):
     version: int = VERSIO
     source: Font
@@ -115,6 +129,7 @@ class SongAnalysis(BaseModel):
     models: dict[str, str] = Field(default_factory=dict)
     temps_etapes_s: dict[str, float] = Field(default_factory=dict)
     avisos: list[str] = Field(default_factory=list)  # coses a revisar (línies descartades...)
+    chord_sources: list[FontAcords] = Field(default_factory=list)  # tabs contrastades (opcional al compacte)
 
 
 class ImportResult(BaseModel):
@@ -143,6 +158,7 @@ class ImportResult(BaseModel):
 #   sections: [start_ms, end_ms, label, name]
 #   rhythm:   {"style", "confidence", "alternatives": [[style, prob]...],
 #              "groove": {"slots_per_beat", "low", "mid", "high"}}   ← opcional (a 0,01)
+#   chord_sources: [{site, url, rating, votes, manual, fit, matched, weight, group, used}]   ← opcional
 #
 # El `bar` de cada pulsació no es desa: és el nombre de pulsacions amb beat 1 fins a ella (0 =
 # anacrusi). El `beat` es dedueix comptant des de l'últim inici de compàs; les pulsacions de
@@ -226,6 +242,8 @@ def a_compacte(a: SongAnalysis) -> dict:
         if r.arpeggiated is not None:
             ritme["arpeggiated"] = round(r.arpeggiated, 3)
         d["rhythm"] = ritme
+    if a.chord_sources:
+        d["chord_sources"] = [f.model_dump() for f in a.chord_sources]
     return d
 
 
@@ -272,4 +290,5 @@ def de_compacte(d: dict) -> SongAnalysis:
         models=d.get("models", {}),
         temps_etapes_s=d.get("stage_times_s", {}),
         avisos=d.get("warnings", []),
+        chord_sources=[FontAcords(**f) for f in d.get("chord_sources") or []],
     )

@@ -197,7 +197,9 @@ class Worker:
         """El pipeline per a la feina. En una `update`, pel camí més ràpid (vegeu la capçalera)."""
         entrada = Entrada(font=feina["source_url"], titol=feina.get("title"), artista=feina.get("artist"),
                           idioma=feina.get("language"), text_usuari=feina.get("lyrics_text"),
-                          content_bd=feina.get("song_content"))
+                          content_bd=feina.get("song_content"), content_huma=bool(feina.get("song_content_human")),
+                          urls_acords=list(feina.get("chord_source_urls") or []),
+                          urls_bloquejades=list(feina.get("chord_source_blocked") or []))
         args = dict(cfg=self.cfg, perfil=self.perfil, cache=cache, en_fase=self._en_fase, comprova=self._comprova)
         if feina.get("mode") != "update":
             return executa(entrada, **args)

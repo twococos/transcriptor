@@ -25,6 +25,7 @@ CANVIS: dict[str, set[str]] = {
     "0.1.10": {POSTPROCES},  # temps de la primera paraula de frase de Whisper (postprocess/temps_asr.py)
     "0.1.11": {POSTPROCES},  # compassos als instrumentals; sense repetir l'acord a l'inici de línia
     "0.1.13": {POSTPROCES},  # acords per patrons de compàs; seccions contigües, a terra i amb l'acord després del títol
+    "0.1.14": {POSTPROCES},  # acords i seccions contrastats amb tabs d'internet (fonts/)
 }
 
 

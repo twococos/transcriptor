@@ -11,6 +11,7 @@ import json
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,14 +22,18 @@ from . import __version__, estadistiques, merge, render, structure
 from .audio import durada as durada_audio
 from .cache import Cache
 from .config import Config, prepara_entorn_models
+from .fonts import aplica as fonts_aplica, normalitza as fonts_normalitza, seccions as fonts_seccions
+from .fonts.alinea import Graella
+from .fonts.model import TabCrua
 from .device import Perfil, configura_fils, detecta
 from .notation import transposa
 from .paquet import Crues
 from .postprocess import chords_clean, key as key_mod, lines as lines_mod, meter, pulsacions as pulsacions_mod
 from .postprocess import seccions as seccions_mod, style as style_mod, temps_asr
-from .schema import (Acord, Font, Groove, ImportResult, Linia, Meta, Paraula, Pulsacio, Ritme, Seccio,
+from .schema import (Acord, Font, FontAcords, Groove, ImportResult, Linia, Meta, Paraula, Pulsacio, Ritme, Seccio,
                      SongAnalysis, Tempo, Tonalitat)
-from .stages import chords, fetch, groove, lyrics_align, lyrics_asr, lyrics_source, rhythm, separate
+from .stages import (chords, chords_source, fetch, groove, lyrics_align, lyrics_asr, lyrics_source, rhythm,
+                     separate)
 from .text import detecta_idioma, linies_de_text
 
 log = logging.getLogger(__name__)
@@ -44,6 +49,9 @@ class Entrada:
     idioma: str | None = None  # None = el detecta Whisper
     text_usuari: str | None = None
     content_bd: str | None = None  # lletra de la BD (si la cançó ja hi és)
+    content_huma: bool = False  # el content de la BD l'ha escrit o editat una persona: també és una font d'acords
+    urls_acords: list[str] = field(default_factory=list)  # tabs afegides a mà a l'admin
+    urls_bloquejades: list[str] = field(default_factory=list)  # tabs descartades a l'admin
 
 
 @dataclass
@@ -54,6 +62,7 @@ class Resultat:
     elements: list[dict] = field(default_factory=list)
     estadistiques: dict = field(default_factory=dict)  # vegeu estadistiques.py
     crues: Crues | None = None  # dades crues (paquet.py), per enviar-les amb el resultat
+    fonts: "fonts_aplica.ResultatFonts | None" = None  # tabs d'acords fetes servir (fonts/aplica.py)
 
 
 def _hash(text: str | None) -> str | None:
@@ -95,11 +104,10 @@ def _estil(envs: dict | None, compas: dict, previa: Ritme | None) -> Ritme | Non
         return None
 
 
-def ritme_i_acords(ritme: dict, probs: np.ndarray, per_trama: float, durada: float,
-                   cfg: Config) -> tuple[list[dict], dict, list[dict], int]:
-    """Pulsacions corregides → compàs → acords per pulsació (també el fa servir tools/revisa_ritme.py).
+def graella_acords(ritme: dict, probs: np.ndarray, per_trama: float, durada: float, cfg: Config) -> dict:
+    """Pulsacions corregides → compàs → probabilitats d'acord per pulsació (abans del Viterbi).
 
-    Retorna (correccions de la graella, compàs de meter.regularitza, segments d'acord, desfasament)."""
+    Retorna {correccions, compas, etiquetes, vores, p_unitat, desfasament}."""
     corr = pulsacions_mod.corregeix(ritme["pulsacions"], ritme["inicis_compas"])
     pulsacions = corr["pulsacions"]
     etiquetes, col_lapse = chords_clean.vocabulari(cfg.acords_vocabulari)
@@ -108,15 +116,31 @@ def ritme_i_acords(ritme: dict, probs: np.ndarray, per_trama: float, durada: flo
     desfasament = 1 if len(vores) - 1 > len(pulsacions) else 0  # unitat [0, p0)
     canvis = chords_clean.canvis_crus(p_unitat)[desfasament:]
     compas = meter.regularitza(pulsacions, corr["inicis_compas"], canvis)
+    return {"correccions": corr["correccions"], "compas": compas, "etiquetes": etiquetes, "vores": vores,
+            "p_unitat": p_unitat, "desfasament": desfasament}
+
+
+def acords_de_graella(gr: dict, cfg: Config, bonificacio: np.ndarray | None = None) -> list[dict]:
+    """Viterbi per compàs (amb la bonificació de les fonts externes, si n'hi ha) → segments d'acord."""
+    compas, p_unitat, desfasament = gr["compas"], gr["p_unitat"], gr["desfasament"]
     if len(compas["beats"]) >= 8:
-        cami = chords_clean.viterbi_compas(p_unitat, compas["beats"], desfasament)
+        cami = chords_clean.viterbi_compas(p_unitat, compas["beats"], desfasament, bonificacio)
     else:
         inici_compas = np.array([False] * desfasament + [b["beat"] == 1 for b in compas["beats"]] + [False])
-        cami = chords_clean.viterbi(p_unitat, inici_compas[: len(p_unitat)])
+        logp_extra = p_unitat if bonificacio is None else p_unitat * np.exp(bonificacio)
+        cami = chords_clean.viterbi(logp_extra, inici_compas[: len(p_unitat)])
     min_unitats = max(1, int(round(cfg.acords_min_pulsacions)))
-    segs = chords_clean.segments(cami, etiquetes, vores, p_unitat, min_unitats,
+    return chords_clean.segments(cami, gr["etiquetes"], gr["vores"], p_unitat, min_unitats,
                                  buit_max=max(1.0, merge._durada_compas(compas["beats"])))
-    return corr["correccions"], compas, segs, desfasament
+
+
+def ritme_i_acords(ritme: dict, probs: np.ndarray, per_trama: float, durada: float,
+                   cfg: Config) -> tuple[list[dict], dict, list[dict], int]:
+    """Pulsacions corregides → compàs → acords per pulsació (també el fa servir tools/revisa_ritme.py).
+
+    Retorna (correccions de la graella, compàs de meter.regularitza, segments d'acord, desfasament)."""
+    gr = graella_acords(ritme, probs, per_trama, durada, cfg)
+    return gr["correccions"], gr["compas"], acords_de_graella(gr, cfg), gr["desfasament"]
 
 
 # Fases que veu l'usuari a l'app (en_fase); l'ordre és el de l'execució
@@ -125,7 +149,7 @@ FASES = [
     "Separant la veu de l'acompanyament",
     "Detectant el ritme i el compàs",
     "Reconeixent els acords",
-    "Buscant la lletra",
+    "Buscant la lletra i els acords",
     "Desxifrant la lletra",
     "Sincronitzant la lletra amb la música",
     "Muntant la cançó",
@@ -167,6 +191,9 @@ def crues(entrada: Entrada, cfg: Config, perfil: Perfil, cache: Cache, fase: Cal
         meta = cache.json("fetch", params_fetch, lambda: fetch.descarrega(entrada.font, cami_audio))
         durada = durada_audio(cami_audio)
     titol, artista = _titol_artista(meta, entrada)
+    # Les tabs d'acords es busquen en un fil mentre treballen els models (només cal títol i artista)
+    fil_fonts = ThreadPoolExecutor(max_workers=1)
+    fonts_futur = fil_fonts.submit(_fonts_acords, cache, entrada, titol, artista) if cfg.fonts_acords else None
 
     # 2. Separació de la veu
     fase(1)
@@ -238,9 +265,16 @@ def crues(entrada: Entrada, cfg: Config, perfil: Perfil, cache: Cache, fase: Cal
         g = np.load(f_groove)
         envs = {"env": g["env"], "planor": float(g["planor"])}
 
+    fonts = None
+    if fonts_futur is not None:
+        try:
+            fonts = fonts_futur.result(timeout=chords_source.LIMIT_S + 30)
+        except Exception:  # noqa: BLE001 — les fonts són un extra
+            log.warning("No s'han pogut buscar les tabs d'acords", exc_info=True)
+    fil_fonts.shutdown(wait=False)
     return Crues(meta=meta, durada=float(durada), ritme=ritme, probs=probs, per_trama=per_trama, asr=asr,
                  idioma_asr=idioma_asr, lletra=font_lletra, groove=envs, separador=separador,
-                 compute_type=compute_type, versio=__version__), veu
+                 compute_type=compute_type, versio=__version__, fonts=fonts), veu
 
 
 def _font_lletra(cache: Cache, entrada: Entrada, cfg: Config, titol: str, artista: str, durada: float) -> dict:
@@ -251,6 +285,39 @@ def _font_lletra(cache: Cache, entrada: Entrada, cfg: Config, titol: str, artist
         lambda: dict(zip(("text", "font"), lyrics_source.obte(
             entrada.text_usuari, entrada.content_bd, titol, artista, durada, cfg.lrclib))),
     )
+
+
+def _params_fonts(entrada: Entrada, titol: str, artista: str) -> dict:
+    return {"titol": titol, "artista": artista, "urls": sorted(entrada.urls_acords),
+            "bloquejades": sorted(entrada.urls_bloquejades), "versio": chords_source.VERSIO}
+
+
+def _fonts_acords(cache: Cache, entrada: Entrada, titol: str, artista: str) -> dict:
+    """{params, tabs}: les tabs d'acords trobades (cache `chords_source`). Mai llança."""
+    params = _params_fonts(entrada, titol, artista)
+    try:
+        tabs = cache.json("chords_source", params, lambda: [t.a_dict() for t in chords_source.obte(
+            titol, artista, entrada.idioma, entrada.urls_acords, entrada.urls_bloquejades)])
+    except Exception:  # noqa: BLE001
+        log.warning("Cerca de tabs d'acords fallida", exc_info=True)
+        tabs = []
+    return {"params": params, "tabs": tabs}
+
+
+def _tabs(c: Crues, cache: Cache, entrada: Entrada, cfg: Config, titol: str, artista: str) -> list[TabCrua]:
+    """Les tabs per contrastar: les de les dades crues si es van buscar amb els mateixos paràmetres
+    (una feina `update` no torna a baixar res), si no es busquen ara; i el content de la BD si l'ha
+    escrit una persona."""
+    if not cfg.fonts_acords:
+        return []
+    fonts = c.fonts
+    if fonts is None or fonts.get("params") != _params_fonts(entrada, titol, artista):
+        fonts = _fonts_acords(cache, entrada, titol, artista)
+        c.fonts = fonts
+    tabs = [TabCrua.de_dict(d) for d in fonts.get("tabs") or []]
+    if entrada.content_huma and entrada.content_bd and entrada.content_bd.count("<ch>") >= 4:
+        tabs.insert(0, fonts_normalitza.de_content(entrada.content_bd))
+    return tabs
 
 
 def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None = None,
@@ -300,10 +367,9 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     # 7. Postprocés de ritme i acords
     fase(6)
     t0 = time.perf_counter()
-    correccions_ritme, compas, segs, desfasament = ritme_i_acords(c.ritme, c.probs, c.per_trama, durada, cfg)
-
-    tonalitat = key_mod.estima(segs)
-    capo = key_mod.suggereix_capo(tonalitat) if (tonalitat and cfg.extra.get("aplicar_capo", True)) else 0
+    gr = graella_acords(c.ritme, c.probs, c.per_trama, durada, cfg)
+    correccions_ritme, compas, desfasament = gr["correccions"], gr["compas"], gr["desfasament"]
+    segs = acords_de_graella(gr, cfg)
 
     ritme_estil = _estil(c.groove, compas, previa.rhythm if previa else None)
 
@@ -336,11 +402,35 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
         aparellades = None
         font_lletra["font"] = "whisper"
 
+    # 8b. Fonts externes d'acords (tabs): segona passada del Viterbi amb els seus vots
+    fonts_res = None
+    tabs = _tabs(c, cache, entrada, cfg, titol, artista)
+    if tabs:
+        g = Graella(vores=gr["vores"], p_unitat=gr["p_unitat"], etiquetes=gr["etiquetes"], beats=compas["beats"],
+                    desfasament=desfasament, paraules=paraules)
+        try:
+            fonts_res = fonts_aplica.aplica(tabs, g, segs, lambda b: acords_de_graella(gr, cfg, b))
+            segs = fonts_res.segs
+        except Exception:  # noqa: BLE001 — les fonts són un extra: sense elles l'anàlisi serveix
+            log.warning("No s'han pogut aplicar les fonts d'acords", exc_info=True)
+            fonts_res = None
+
+    acords_btc = [dict(s, label=s.get("raw", s["label"])) for s in segs]
+    tonalitat = key_mod.estima(acords_btc)
+    capo = key_mod.suggereix_capo(tonalitat) if (tonalitat and cfg.extra.get("aplicar_capo", True)) else 0
+
     # 9. Fusió, estructura i render
     fase(7)
     elements = merge.colloca(paraules, rangs, segs, compas["beats"], durada)
     durada_compas = merge._durada_compas(compas["beats"])
     seccions = structure.detecta(elements, durada, durada_compas)
+    if fonts_res is not None and fonts_res.consens is not None:
+        try:
+            seccions, n = fonts_seccions.corregeix(elements, seccions,
+                                                   [(f.al, f.pes) for f in fonts_res.consens.fonts], gr["vores"])
+            fonts_res.resum["linies_seccio_canviada"] = n
+        except Exception:  # noqa: BLE001
+            log.warning("No s'han pogut contrastar les seccions amb les fonts", exc_info=True)
     elements, seccions = seccions_mod.quadra(elements, seccions, compas["beats"], segs, durada)
     text_content = render.content(elements, seccions, capo)
     cache.temps["postproces"] = round(time.perf_counter() - t0, 1)
@@ -350,7 +440,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     acords_out = []
     for s in segs:
         b = idx_unitat_pulsacio.get(s["unitat"])
-        acords_out.append(Acord(start=s["start"], end=s["end"], label=s["label"], raw=s["label"],
+        acords_out.append(Acord(start=s["start"], end=s["end"], label=s["label"], raw=s.get("raw", s["label"]),
                                 bar=b["bar"] if b else None, beat=b["beat"] if b else None, conf=s["conf"]))
     seccio_de_linia = {}
     for k, s in enumerate(seccions):
@@ -391,8 +481,12 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
                             content=text_content, youtubeUrl=c.meta.get("url"))
     if aparellades is not None:
         analisi.models["lyrics_aparellades"] = str(aparellades)
+    if fonts_res is not None:
+        analisi.models["chord_sources"] = str(fonts_res.resum.get("valides", 0))
+    if fonts_res is not None:
+        analisi.chord_sources = [FontAcords(**f) for f in fonts_res.fonts]
     stats = estadistiques.calcula(analisi, perfil, cache.cached, al,
                                   [w["conf"] for w in asr["paraules"] if w.get("conf") is not None],
-                                  cfg.acords_vocabulari)
+                                  cfg.acords_vocabulari, fonts_res.resum if fonts_res is not None else None)
     return Resultat(analisi=analisi, content=text_content, proposta=proposta, elements=elements,
-                    estadistiques=stats, crues=c)
+                    estadistiques=stats, crues=c, fonts=fonts_res)

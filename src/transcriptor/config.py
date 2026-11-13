@@ -33,6 +33,7 @@ class Config(BaseModel):
     whisper_compute_type: str | None = None
     vad_llindar: float = 0.5  # VAD de Whisper: més baix = menys risc de perdre veu fluixa
     lrclib: bool = True
+    fonts_acords: bool = True  # contrasta els acords i les seccions amb tabs d'internet (fonts/)
     afinar_ctc: bool = False  # refinament amb wav2vec2 català (extra `ctc`)
     # Línies i estructura
     pausa_linia_s: float = 0.6

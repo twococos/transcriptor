@@ -6,7 +6,7 @@ docs/api_worker.md) i les rep de tornada en una feina `update` (vegeu versions.p
 
 Format: un .npz comprimit (zip) amb
 - `json`: UTF-8 de {v, versio, meta, durada, ritme, asr, idioma_asr, lletra, separador,
-  compute_type, per_trama, escala_groove, planor}
+  compute_type, per_trama, escala_groove, planor, fonts (opcional: les tabs d'acords trobades)}
 - `acords`: probabilitats de BTC per trama (trames × 170) en uint8 sobre l'arrel quadrada, amb les
   menors de TALL_ACORDS a zero. Amb les 76 cançons de la cache dona els mateixos acords finals en
   ≥ 99,5 % del temps (mitjana 99,99 %) i ocupa ~30 KB per 3 minuts.
@@ -40,6 +40,7 @@ class Crues:
     separador: str
     compute_type: str
     versio: str  # versió del transcriptor que les ha produït
+    fonts: dict | None = None  # tabs d'acords trobades: {params, tabs} (stages/chords_source.py)
 
 
 def empaqueta(c: Crues) -> bytes:
@@ -48,6 +49,8 @@ def empaqueta(c: Crues) -> bytes:
         "asr": c.asr, "idioma_asr": c.idioma_asr, "lletra": c.lletra, "separador": c.separador,
         "compute_type": c.compute_type, "per_trama": c.per_trama,
     }
+    if c.fonts is not None:
+        dades["fonts"] = c.fonts
     p = np.asarray(c.probs, dtype=np.float32)
     arrays = {"acords": np.round(np.sqrt(np.where(p < TALL_ACORDS, 0, p)) * 255).astype(np.uint8)}
     if c.groove is not None:
@@ -75,4 +78,4 @@ def desempaqueta(contingut: bytes) -> Crues:
     return Crues(meta=dades["meta"], durada=dades["durada"], ritme=dades["ritme"], probs=probs,
                  per_trama=dades["per_trama"], asr=dades["asr"], idioma_asr=dades["idioma_asr"],
                  lletra=dades["lletra"], groove=groove, separador=dades["separador"],
-                 compute_type=dades["compute_type"], versio=dades["versio"])
+                 compute_type=dades["compute_type"], versio=dades["versio"], fonts=dades.get("fonts"))

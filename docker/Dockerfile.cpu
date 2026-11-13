@@ -2,6 +2,9 @@
 # Construir des de l'arrel del repo: docker build -f docker/Dockerfile.cpu -t transcriptor:cpu .
 FROM python:3.11-slim
 
+# Chromium sense finestra per a les fonts d'acords que el necessiten (Ultimate Guitar)
+RUN apt-get update && apt-get install -y --no-install-recommends chromium && rm -rf /var/lib/apt/lists/*
+
 COPY --from=ghcr.io/astral-sh/uv:0.13.1 /uv /usr/local/bin/uv
 ENV UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1 UV_PROJECT_ENVIRONMENT=/opt/venv \
     TX_HOME=/dades PATH=/opt/venv/bin:$PATH

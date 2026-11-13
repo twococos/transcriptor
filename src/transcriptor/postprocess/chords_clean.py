@@ -119,13 +119,17 @@ def _grups(beats: list[dict], desfasament: int, n_unitats: int) -> list[tuple[in
     return [g for g in grups if g[1] > g[0]]
 
 
-def viterbi_compas(p_unitat: np.ndarray, beats: list[dict], desfasament: int) -> np.ndarray:
+def viterbi_compas(p_unitat: np.ndarray, beats: list[dict], desfasament: int,
+                   bonificacio: np.ndarray | None = None) -> np.ndarray:
     """Seqüència d'etiquetes (índexs per unitat) amb un patró de divisió per compàs.
 
     Maximitza Σ log p − cost dels patrons − PENALITZACIO_CANVI_COMPAS·canvis. L'estat entre
     compassos és l'últim acord; dins el compàs, tros a tros amb el truc O(K) de `viterbi`.
+    `bonificacio` (unitats × etiquetes) se suma a log p: els vots de les fonts externes (fonts/consens.py).
     """
     logp = np.log(p_unitat + 1e-6)
+    if bonificacio is not None:
+        logp = logp + bonificacio
     n, k = logp.shape
     punts = np.zeros(k)
     rastre = []  # per compàs: (patró triat per acord final, [per patró: [(a, b, previ[k])]])
