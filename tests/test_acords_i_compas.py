@@ -60,3 +60,50 @@ def test_compas_compost_6_8():
     r = meter.regularitza(pulsacions, inicis, canvis)
     assert r["time_signature"] == [6, 8]
     assert [b["beat"] for b in r["beats"][:7]] == [1, 2, 3, 4, 5, 6, 1]
+
+
+def _p_unitat(seq: str, etiquetes: list[str], forca: float = 0.8) -> np.ndarray:
+    """Probabilitats per pulsació: `seq` = etiquetes separades per espais (una per pulsació)."""
+    p = np.full((len(seq.split()), len(etiquetes)), (1 - forca) / (len(etiquetes) - 1))
+    for u, e in enumerate(seq.split()):
+        p[u, etiquetes.index(e)] = forca
+    return p
+
+
+def _compas_4(n: int) -> list[dict]:
+    return [{"t": i * 0.5, "bar": i // 4 + 1, "beat": i % 4 + 1} for i in range(n)]
+
+
+def _acords(cami: np.ndarray, etiquetes: list[str]) -> str:
+    return " ".join(etiquetes[c] for c in cami)
+
+
+def test_viterbi_compas_porta_a_terra_el_canvi_que_arriba_tard():
+    etiquetes, _ = chords_clean.vocabulari("majmin")
+    pu = _p_unitat("A A A A A E E E E E E E", etiquetes, 0.5)
+    cami = chords_clean.viterbi_compas(pu, _compas_4(12), 0)
+    assert _acords(cami, etiquetes) == "A A A A E E E E E E E E"
+
+
+def test_viterbi_compas_mante_acords_de_pas_i_mig_compas():
+    etiquetes, _ = chords_clean.vocabulari("majmin")
+    pas = "A A A A D E F#m E A A A A"
+    assert _acords(chords_clean.viterbi_compas(_p_unitat(pas, etiquetes, 0.9), _compas_4(12), 0), etiquetes) == pas
+    mig = "A A D D E E E E A A A A"
+    assert _acords(chords_clean.viterbi_compas(_p_unitat(mig, etiquetes), _compas_4(12), 0), etiquetes) == mig
+
+
+def test_viterbi_compas_absorbeix_un_temps_aillat():
+    etiquetes, _ = chords_clean.vocabulari("majmin")
+    pu = _p_unitat("A A A A A C A A E E E E", etiquetes, 0.6)
+    assert _acords(chords_clean.viterbi_compas(pu, _compas_4(12), 0), etiquetes) == "A A A A A A A A E E E E"
+
+
+def test_viterbi_compas_amb_anacrusi_i_compas_irregular():
+    etiquetes, _ = chords_clean.vocabulari("majmin")
+    # Unitat [0, p0), anacrusi de 2 pulsacions, un compàs de 2 i compassos de 4
+    temps = [3, 4, 1, 2, 3, 4, 1, 2, 1, 2, 3, 4]
+    beats = [{"t": 0.5 + i * 0.5, "bar": 0, "beat": b} for i, b in enumerate(temps)]
+    pu = _p_unitat("N G G C C C C D D E E E E", etiquetes)
+    cami = chords_clean.viterbi_compas(pu, beats, 1)
+    assert _acords(cami, etiquetes) == "N G G C C C C D D E E E E"

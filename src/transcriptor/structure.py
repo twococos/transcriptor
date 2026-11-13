@@ -6,6 +6,8 @@
    **Tornada**; la resta són **Estrofes** (numerades). Un bloc no repetit cap al final amb acords
    que no surten enlloc més és un **Pont**.
 4. Abans de la primera veu: **Intro**. Després de l'última: **Outro**. Al mig: **Instrumental**.
+   Les zones massa curtes per ser secció les uneix després postprocess/seccions.py, que també
+   quadra les fronteres amb el compàs.
 
 Noms segons SECTION_TYPES de src/lib/editor/sections.ts del canconer.
 """
@@ -165,10 +167,6 @@ def detecta(elements: list[dict], durada: float, durada_compas: float) -> list[d
     for i, e in enumerate(elements):
         if e["tipus"] != "instrumental":
             continue
-        if e["end"] - e["start"] < durada_compas * 0.9 and len(e["acords"]) < 2:
-            # Massa curt per ser secció: s'afegeix a la secció veïna
-            seccions.append({"label": None, "elements": [i]})
-            continue
         if not idx_linies or i < idx_linies[0]:
             etiqueta = "Intro"
         elif i > idx_linies[-1]:
@@ -178,26 +176,13 @@ def detecta(elements: list[dict], durada: float, durada_compas: float) -> list[d
         seccions.append({"label": etiqueta, "elements": [i]})
     seccions.sort(key=lambda s: s["elements"][0])
 
-    # Zones curtes sense etiqueta: s'uneixen a l'anterior (o a la següent si són al principi)
     fusionades: list[dict] = []
-    pendents: list[int] = []
     for s in seccions:
-        if s["label"] is None:
-            if fusionades:
-                fusionades[-1]["elements"].extend(s["elements"])
-            else:
-                pendents.extend(s["elements"])
-            continue
-        if pendents:
-            s["elements"] = pendents + s["elements"]
-            pendents = []
         # Dues seccions consecutives del mateix tipus no repetible s'uneixen
         if fusionades and fusionades[-1]["label"] == s["label"] and s["label"] in ("Instrumental", "Pont"):
             fusionades[-1]["elements"].extend(s["elements"])
         else:
             fusionades.append(s)
-    if pendents:
-        fusionades.append({"label": "Intro", "elements": pendents})
 
     n_estrofa = 0
     for s in fusionades:

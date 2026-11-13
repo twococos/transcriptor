@@ -25,7 +25,7 @@ from .device import Perfil, configura_fils, detecta
 from .notation import transposa
 from .paquet import Crues
 from .postprocess import chords_clean, key as key_mod, lines as lines_mod, meter, pulsacions as pulsacions_mod
-from .postprocess import style as style_mod, temps_asr
+from .postprocess import seccions as seccions_mod, style as style_mod, temps_asr
 from .schema import (Acord, Font, Groove, ImportResult, Linia, Meta, Paraula, Pulsacio, Ritme, Seccio,
                      SongAnalysis, Tempo, Tonalitat)
 from .stages import chords, fetch, groove, lyrics_align, lyrics_asr, lyrics_source, rhythm, separate
@@ -108,10 +108,14 @@ def ritme_i_acords(ritme: dict, probs: np.ndarray, per_trama: float, durada: flo
     desfasament = 1 if len(vores) - 1 > len(pulsacions) else 0  # unitat [0, p0)
     canvis = chords_clean.canvis_crus(p_unitat)[desfasament:]
     compas = meter.regularitza(pulsacions, corr["inicis_compas"], canvis)
-    inici_compas = np.array([False] * desfasament + [b["beat"] == 1 for b in compas["beats"]] + [False])
-    cami = chords_clean.viterbi(p_unitat, inici_compas[: len(p_unitat)])
+    if len(compas["beats"]) >= 8:
+        cami = chords_clean.viterbi_compas(p_unitat, compas["beats"], desfasament)
+    else:
+        inici_compas = np.array([False] * desfasament + [b["beat"] == 1 for b in compas["beats"]] + [False])
+        cami = chords_clean.viterbi(p_unitat, inici_compas[: len(p_unitat)])
     min_unitats = max(1, int(round(cfg.acords_min_pulsacions)))
-    segs = chords_clean.segments(cami, etiquetes, vores, p_unitat, min_unitats)
+    segs = chords_clean.segments(cami, etiquetes, vores, p_unitat, min_unitats,
+                                 buit_max=max(1.0, merge._durada_compas(compas["beats"])))
     return corr["correccions"], compas, segs, desfasament
 
 
@@ -337,6 +341,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     elements = merge.colloca(paraules, rangs, segs, compas["beats"], durada)
     durada_compas = merge._durada_compas(compas["beats"])
     seccions = structure.detecta(elements, durada, durada_compas)
+    elements, seccions = seccions_mod.quadra(elements, seccions, compas["beats"], segs, durada)
     text_content = render.content(elements, seccions, capo)
     cache.temps["postproces"] = round(time.perf_counter() - t0, 1)
 
