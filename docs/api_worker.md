@@ -47,7 +47,7 @@ Resposta `204`: no hi ha feina. Resposta `200`:
     "lease_seconds": 600 } }
 ```
 - `mode`:
-  - `new`: el resultat crea una cançó pendent i una proposta a nom de l'usuari sistema "Transcriptor".
+  - `new`: el resultat crea directament una cançó pública (sense proposta).
   - `analyze`: per a una cançó existent. `song_content` porta el seu `content` (el worker en fa servir la
     lletra, font "db") i el resultat **només** desa l'anàlisi; el `content` no es toca.
   - `update` (des de la 0.1.9): com `analyze`, per tornar a fer una anàlisi amb una versió més nova.
@@ -82,7 +82,7 @@ Cos buit. Cada `lease_seconds / 3`. Allarga el lease. `409` = la feina ja no és
   en mode `update`, també si encara són els de l'anàlisi anterior).
 - Si en mode `new` ja existeix una cançó amb el mateix artista i títol, la feina queda fallada amb
   "Ja existeix (cançó N)".
-- Respostes: `{"status": "ok", "songId": …, "proposalId": …}` o `{"status": "duplicate", "songId": …}`.
+- Respostes: `{"status": "ok", "songId": …, "proposalId": null}` (`proposalId` sempre és `null`; es manté per compatibilitat) o `{"status": "duplicate", "songId": …}`.
 
 ## `POST /api/transcriber/jobs/{id}/fail`
 
