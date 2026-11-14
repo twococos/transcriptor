@@ -1,4 +1,5 @@
 from transcriptor import merge, render, structure
+from transcriptor.postprocess import rodes
 from transcriptor.stages.lyrics_align import alinea
 from transcriptor.stages.lyrics_source import text_de_content
 from transcriptor.text import linies_de_text
@@ -74,7 +75,8 @@ def test_merge_estructura_i_render():
     content = render.content(elements, seccions)
     linies = content.split("\n")
     assert linies[0] == "<sec>Intro</sec>"
-    assert linies[1] == "<ch>A</ch>|   '   '   '   |   '   '   '   <ch>E</ch>|   '   '   '   |   '   '   '"
+    # Un acord cada dos compassos: els temps queden comprimits
+    assert linies[1] == "<ch>A</ch>| ' ' ' | ' ' ' <ch>E</ch>| ' ' ' | ' ' '"
     assert "<ch>D</ch>Aquesta es la tornada" in content
     assert "" not in linies
     # L'acord que ja sonava no es repeteix a l'inici de la línia següent
@@ -86,10 +88,55 @@ def test_compassos_d_instrumental():
     # C#m tapa dos temps: D es desplaça perquè no s'hi trepitgi. Sense barra final (la veu entra al temps 3)
     assert render.linies_compassos(puls) == ["<ch>A</ch>|   '   <ch>C#m</ch>'       <ch>D</ch>'   |   '"]
     # Zona que comença a mig compàs: el primer temps no és barra
-    assert render.linies_compassos([[0, 3, "G"], [1, 4, None], [2, 1, "D"]]) == ["<ch>G</ch>'   '   <ch>D</ch>|"]
-    puls = [[t, t % 4 + 1, "A" if t % 4 == 0 else None] for t in range(20)]
+    assert render.linies_compassos([[0, 3, "G"], [1, 4, None], [2, 1, "D"]]) == ["<ch>G</ch>' ' <ch>D</ch>|"]
+    # Un sol acord no és una roda; la línia següent torna a escriure l'acord que sona
+    puls = [[t, t % 4 + 1, "A" if t == 0 else None] for t in range(20)]
     linies = render.linies_compassos(puls)
-    assert len(linies) == 2 and linies[1].count("<ch>A</ch>") == 1  # 4 compassos per línia
+    assert linies == ["<ch>A</ch>| ' ' ' | ' ' ' | ' ' ' | ' ' '", "<ch>A</ch>| ' ' '"]
+
+
+def _puls(compassos: list[str | None], temps: int = 4) -> list[list]:
+    """Un acord (o None, continua) per compàs."""
+    return [[k * temps + q, q + 1, c if q == 0 else None] for k, c in enumerate(compassos) for q in range(temps)]
+
+
+def test_roda_que_es_repeteix_s_escriu_una_vegada():
+    # Uns compassos de E i després la roda G B Em C tres vegades, i un G per acabar
+    linies = render.linies_compassos(_puls(["E", None, None, None] + ["G", "B", "Em", "C"] * 3 + ["G"]))
+    assert linies == ["<ch>E</ch>| ' ' ' | ' ' ' | ' ' ' | ' ' '",
+                      "<ch>G</ch>| ' ' ' <ch>B</ch>| ' ' ' <ch>Em</ch>| ' ' ' <ch>C</ch>| ' ' '  (x3)",
+                      "<ch>G</ch>| ' ' '"]
+
+
+def test_roda_de_dues_linies():
+    roda = ["G", None, "B", None, "Em", None, "C", None]
+    # A l'inici de la secció: una passada i "x2" sol a sota
+    assert render.linies_compassos(_puls(roda * 2), inici_bloc=True) == [
+        "<ch>G</ch>| ' ' ' | ' ' ' <ch>B</ch>| ' ' ' | ' ' '",
+        "<ch>Em</ch>| ' ' ' | ' ' ' <ch>C</ch>| ' ' ' | ' ' '",
+        "x2"]
+    # Amb compassos abans, "x2" també els repetiria: s'escriu sencera, cada passada en línia nova
+    linies = render.linies_compassos(_puls(["E", None] + roda * 2), inici_bloc=True)
+    assert len(linies) == 5 and not any("x2" in l for l in linies)
+    assert linies[1].startswith("<ch>G</ch>") and linies[3].startswith("<ch>G</ch>")
+
+
+def test_roda_amb_variants_de_septima_i_canvis_a_mig_compas():
+    puls = _puls(["A", "B", "A", "B7"])
+    roda = rodes.trossos(puls)
+    assert [t.vegades for t in roda] == [2]
+    puls = [[t, t % 4 + 1, {0: "A", 2: "C#m", 3: "D"}.get(t % 8)] for t in range(24)]
+    assert render.linies_compassos(puls) == ["<ch>A</ch>|   '   <ch>C#m</ch>'       <ch>D</ch>'   |   '   '   '  (x3)"]
+
+
+def test_content_uneix_les_zones_seguides_d_una_seccio():
+    beats = [{"t": float(i), "bar": i // 4 + 1, "beat": i % 4 + 1} for i in range(16)]
+    a = {"tipus": "instrumental", "start": 0, "end": 6, "acords": [["E", 0.0]],
+         "pulsacions": [[float(t), t % 4 + 1, "E" if t == 0 else None] for t in range(6)]}
+    b = {"tipus": "instrumental", "start": 6, "end": 16, "acords": [["A", 8.0]],
+         "pulsacions": [[float(t), t % 4 + 1, "A" if t == 8 else None] for t in range(6, 16)]}
+    assert beats and render.content([a, b], [{"name": "Outro", "elements": [0, 1]}]) == (
+        "<sec>Outro</sec>\n<ch>E</ch>| ' ' ' | ' ' ' <ch>A</ch>| ' ' ' | ' ' '")
 
 
 def test_render_amb_capo_transposa_a_formes():
@@ -103,3 +150,11 @@ def test_text_de_content_expandeix_repeticions():
          "tres (x3)\nquatre\nbis")
     assert text_de_content(c).split("\n") == ["un", "dos", "un", "dos", "tres", "tres", "tres", "quatre",
                                              "tres", "tres", "tres", "quatre"]
+
+
+def test_banc_desplega_les_repeticions():
+    from transcriptor.bench import metrics
+    c = "<sec>Solo</sec>\n<ch>G</ch>| ' ' ' <ch>C</ch>| ' ' '  (x2)\n<sec>Estrofa</sec>\nu<ch>A</ch>n\ndos\nx2"
+    assert metrics.desplega_repeticions(c).split("\n") == [
+        "<sec>Solo</sec>", "<ch>G</ch>| ' ' ' <ch>C</ch>| ' ' '", "<ch>G</ch>| ' ' ' <ch>C</ch>| ' ' '",
+        "<sec>Estrofa</sec>", "u<ch>A</ch>n", "dos", "u<ch>A</ch>n", "dos"]

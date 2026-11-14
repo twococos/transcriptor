@@ -9,13 +9,21 @@ salt ha de passar del final d'un compàs a l'inici d'un altre. Aquí:
    el primer compàs que comença amb la veu; si la veu entra a la segona meitat del compàs anterior
    és una anacrusi, que no compta per a la llargada (però el text continua a la seva línia).
 2. Les seccions són contigües: cadascuna acaba on comença la següent.
-3. Llargades rodones (prior suau): les fronteres es poden moure fins a MAX_MOURE compassos dins
-   dels trams sense veu, i una programació dinàmica prefereix llargades múltiples de 4 (o de 2) i
-   iguals a les de les altres seccions amb el mateix nom. Si la lletra diu 6 compassos, en són 6.
-4. Les seccions de menys de MIN_COMPASSOS són errors: s'uneixen a l'anterior.
-5. Les zones instrumentals es parteixen per les fronteres, i els acords de després d'una línia que
-   cauen a la secció següent hi passen com a entrada instrumental.
-6. Després del títol de secció sempre hi ha l'acord amb què comença, encara que ja sonés
+3. Llargades rodones: una programació dinàmica tria les fronteres. Prefereix llargades múltiples de
+   4 (el 95 % de les seccions) i iguals a les de les altres seccions amb el mateix nom. Si la lletra
+   diu 6 compassos, en són 6. Entre dues seccions amb lletra, la frontera es mou com a molt
+   MAX_MOURE compassos dins del tram sense veu.
+4. Una zona sense veu entre dues seccions amb lletra pot ser la cua de l'anterior, una secció
+   instrumental, el cap de la següent, o una barreja: les seves fronteres poden anar a qualsevol
+   compàs de la zona, i la secció instrumental pot quedar buida (desapareix). Una secció
+   instrumental costa COST_SECCIO, cada compàs de cua COST_CUA (el primer no) i cada compàs de cap
+   COST_CAP; les tabs hi voten (fonts/seccions.py, `vot_cua`). Així els dos últims compassos d'una
+   estrofa no surten com a «Instrumental», i un solo de 8 compassos continua sent una secció.
+5. Les seccions de menys de MIN_COMPASSOS són errors: s'uneixen a l'anterior.
+6. Les zones instrumentals es parteixen per les fronteres, i els acords de després d'una línia que
+   cauen a la secció següent hi passen com a entrada instrumental. Una cua de fins a MAX_CUA_LINIA
+   compassos s'escriu al final de l'última línia, després de la lletra.
+7. Després del títol de secció sempre hi ha l'acord amb què comença, encara que ja sonés
    (merge.colloca no repeteix l'acord que sonava, però una secció pot venir d'una altra).
 """
 
@@ -32,9 +40,15 @@ MIN_COMPASSOS = 2
 MAX_MOURE = 2
 COST_MOURE = 0.75  # per compàs que es mou una frontera
 BO_CANVI = 0.5  # la frontera cau en un canvi d'acord
-COST_PARELL = 1.0  # llargada parella però no múltiple de 4
-COST_SENAR = 2.0
+COST_PARELL = 2.5  # llargada parella però no múltiple de 4 (~ -log p: el 95 % són múltiples de 4)
+COST_SENAR = 3.5
 BO_MATEIXA_LLARGADA = 1.0  # la mateixa llargada que la majoria de seccions amb el mateix nom
+COST_SECCIO = {"Outro": 1.0}  # una secció instrumental (que no és la primera) existeix
+COST_SECCIO_DEFECTE = 1.5  # Instrumental, Solo, Interludi...
+COST_CUA = 0.6  # per compàs sense veu al final d'una secció amb lletra, a partir del segon
+COST_CAP = 0.5  # per compàs sense veu a l'inici d'una secció amb lletra (sense l'anacrusi)
+BO_FONTS = 1.5  # × vot de les tabs (de -1, és una secció pròpia, a 1, és cua o cap)
+MAX_CUA_LINIA = 4  # compassos de cua que s'escriuen al final de l'última línia
 REPETIBLES = ("Estrofa", "Tornada", "Pre-tornada")
 
 
@@ -92,26 +106,23 @@ def _uneix_curtes(seccions: list[dict], cands: list[int], fi_idx: int,
     return seccions, cands
 
 
-def _fronteres(opcions: list[list[int]], cands: list[int], canvis: set[int], etiquetes: list[str],
-               fi_idx: int, moda: dict[str, int]) -> list[int] | None:
-    """Programació dinàmica: una frontera per secció (la primera, fixa) amb el cost mínim."""
-    def cost_pos(i: int, j: int) -> float:
-        return COST_MOURE * abs(j - cands[i]) - (BO_CANVI if j in canvis else 0.0)
-
-    millor = {opcions[0][0]: (0.0, None)}
-    rastre = [millor]
+def _fronteres(opcions: list[list[int]], cost_seccio, cost_pos, minim: list[int], fi_idx: int) -> list[int] | None:
+    """Programació dinàmica: una frontera per secció (la primera, fixa) amb el cost mínim.
+    `cost_seccio(i, a, b)`: la secció i ocupa els compassos [a, b); `minim[i]`: la seva llargada mínima."""
+    rastre = [{opcions[0][0]: (0.0, None)}]
     for i in range(1, len(opcions)):
         actual = {}
         for j in opcions[i]:
-            candidats = [(c + _cost_llargada(j - jp, moda.get(etiquetes[i - 1])) + cost_pos(i, j), jp)
-                         for jp, (c, _) in rastre[-1].items() if j - jp >= MIN_COMPASSOS]
+            candidats = [(c + cost_seccio(i - 1, jp, j) + cost_pos(i, j), jp)
+                         for jp, (c, _) in rastre[-1].items() if j - jp >= minim[i - 1]]
             if candidats:
                 actual[j] = min(candidats)
         if not actual:
             return None
         rastre.append(actual)
-    finals = [(c + _cost_llargada(fi_idx - j, moda.get(etiquetes[-1])), j) for j, (c, _) in rastre[-1].items()
-              if fi_idx - j >= 1]
+    n = len(opcions)
+    finals = [(c + cost_seccio(n - 1, j, fi_idx), j) for j, (c, _) in rastre[-1].items()
+              if fi_idx - j >= min(minim[-1], 1)]
     if not finals:
         return None
     j = min(finals)[1]
@@ -140,6 +151,35 @@ def _talla(e: dict, inici: float, fi: float, sonant) -> dict | None:
     return {**e, "start": t0, "end": min(e["end"], fi), "acords": acords, "pulsacions": puls}
 
 
+def _n_compassos(e: dict, compas: float) -> int:
+    puls = e.get("pulsacions") or []
+    if not puls:
+        return max(1, round((e["end"] - e["start"]) / compas))
+    return sum(p[1] == 1 for p in puls) + (puls[0][1] != 1)
+
+
+def _cua_a_la_linia(elems: list[dict], compas: float, sonant) -> list[dict]:
+    """Les zones instrumentals curtes després de l'última línia d'una secció amb lletra: els seus
+    canvis d'acord van al final de la línia, després de la lletra (sense compassos)."""
+    k = max((i for i, e in enumerate(elems) if e["tipus"] == "linia"), default=None)
+    cua = elems[k + 1:] if k is not None else []
+    if not cua or any(e["tipus"] != "instrumental" for e in cua):
+        return elems
+    if sum(_n_compassos(e, compas) for e in cua) > MAX_CUA_LINIA:
+        return elems
+    linia = elems[k]
+    anterior = linia["acords"][-1][1] if linia["acords"] else sonant(linia["end"])
+    pos = len(linia["text"])
+    nous = []
+    for e in cua:
+        for etiqueta, t in e["acords"]:
+            if etiqueta and etiqueta != anterior:
+                pos += 1
+                nous.append([pos, etiqueta, t])
+                anterior = etiqueta
+    return elems[:k] + [{**linia, "acords": linia["acords"] + nous}]
+
+
 def quadra(elements: list[dict], seccions: list[dict], beats: list[dict], acords: list[dict],
            durada: float) -> tuple[list[dict], list[dict]]:
     """Retorna (elements, seccions) nous amb les seccions quadrades. `acords`: segments d'acord."""
@@ -164,36 +204,80 @@ def quadra(elements: list[dict], seccions: list[dict], beats: list[dict], acords
     cands = [_candidata(s, elements, terres, tol, compas / 2) for s in seccions]
     seccions, cands = _uneix_curtes(seccions, cands, fi_idx, elements)
 
-    # Opcions de cada frontera: sense travessar la lletra de la secció anterior ni la pròpia
+    n = len(seccions)
+    fi_lletra = [_fi_lletra(s, elements) for s in seccions]
+    fi_bar = [None if f is None else bisect.bisect_left(terres, f - tol) for f in fi_lletra]
+    instr = [f is None for f in fi_lletra]
+    # Opcions de cada frontera: sense travessar la lletra de la secció anterior ni la pròpia. Les
+    # d'una secció instrumental (i la de la secció que la segueix) poden anar a tota la zona.
     opcions = [[cands[0]]]
-    for i in range(1, len(seccions)):
-        fi_ant = _fi_lletra(seccions[i - 1], elements)
-        baix = cands[i] - MAX_MOURE
-        if fi_ant is not None:
-            baix = max(baix, bisect.bisect_left(terres, fi_ant - tol))
+    for i in range(1, n):
         te_lletra_a_l_inici = elements[seccions[i]["elements"][0]]["tipus"] == "linia"
         alt = cands[i] if te_lletra_a_l_inici else cands[i] + MAX_MOURE
-        opcions.append(list(range(min(baix, cands[i]), alt + 1)))
+        if instr[i]:
+            baix = fi_bar[i - 1] if fi_bar[i - 1] is not None else cands[i] - MAX_MOURE
+            if i + 1 < n and not instr[i + 1]:
+                alt = cands[i + 1]
+            elif i + 1 == n:
+                alt = fi_idx
+        elif instr[i - 1] and i >= 2 and fi_bar[i - 2] is not None:
+            baix = fi_bar[i - 2]
+        else:
+            baix = cands[i] - MAX_MOURE
+            if fi_bar[i - 1] is not None:
+                baix = max(baix, fi_bar[i - 1])
+        opcions.append(list(range(min(baix, cands[i]), max(alt, cands[i]) + 1)))
     canvis = set()
     for a in acords:
         k = min(bisect.bisect_left(terres, a["start"] - tol), len(terres) - 1)
         if abs(terres[k] - a["start"]) <= tol:
             canvis.add(k)
     etiquetes = [s["label"] for s in seccions]
-    fronteres = _fronteres(opcions, cands, canvis, etiquetes, fi_idx, {})
+    # Una secció instrumental del mig o del final pot desaparèixer (0 compassos)
+    minim = [0 if instr[i] and i > 0 else MIN_COMPASSOS for i in range(n)]
+    moda: dict[str, int] = {}
+
+    def cost_seccio(i: int, a: int, b: int) -> float:
+        if b == a:
+            return 0.0
+        c = _cost_llargada(b - a, moda.get(etiquetes[i]))
+        if instr[i] and i > 0:
+            vot = seccions[i].get("vot_cua", 0.0)
+            c += COST_SECCIO.get(etiquetes[i], COST_SECCIO_DEFECTE) + BO_FONTS * vot
+        if not instr[i] and (i + 1 == n or instr[i + 1]):
+            c += COST_CUA * max(0, b - fi_bar[i] - 1)
+        return c
+
+    def cost_pos(i: int, j: int) -> float:
+        if instr[i]:
+            c = 0.0
+        elif instr[i - 1]:
+            c = COST_CAP * max(0, cands[i] - j) + COST_MOURE * max(0, j - cands[i])
+        else:
+            c = COST_MOURE * abs(j - cands[i])
+        return c - (BO_CANVI if j in canvis else 0.0)
+
+    fronteres = _fronteres(opcions, cost_seccio, cost_pos, minim, fi_idx)
     if fronteres is not None:
         llargs = Counter()
         for i, et in enumerate(etiquetes):
             fi = fronteres[i + 1] if i + 1 < len(fronteres) else fi_idx
-            llargs[(et, fi - fronteres[i])] += 1
-        moda = {}
-        for et in set(etiquetes):
-            n, vegades = max(((n, v) for (e, n), v in llargs.items() if e == et), key=lambda x: x[1])
+            if fi > fronteres[i]:
+                llargs[(et, fi - fronteres[i])] += 1
+        for et in {e for e, _ in llargs}:
+            nl, vegades = max(((nl, v) for (e, nl), v in llargs.items() if e == et), key=lambda x: x[1])
             if vegades >= 2:
-                moda[et] = n
-        fronteres = _fronteres(opcions, cands, canvis, etiquetes, fi_idx, moda) or fronteres
-    if fronteres is None or any(b <= a for a, b in zip(fronteres, fronteres[1:])):
+                moda[et] = nl
+        fronteres = _fronteres(opcions, cost_seccio, cost_pos, minim, fi_idx) or fronteres
+    if fronteres is None or any(b < a or (b == a and minim[i]) for i, (a, b) in enumerate(zip(fronteres, fronteres[1:]))):
         fronteres = cands
+    # Les seccions buides desapareixen: els seus elements es reparteixen per temps
+    fins_idx = fronteres[1:] + [fi_idx]
+    vius = [i for i in range(n) if fins_idx[i] > fronteres[i] or not instr[i]]
+    nou_idx = {i: k for k, i in enumerate(vius)}
+    originals = seccions
+    seccions = [seccions[i] for i in vius]
+    fronteres = [fronteres[i] for i in vius]
     inicis = [terres[j] for j in fronteres]
     final = terres[fi_idx] if fi_idx < len(terres) else durada
     fins = inicis[1:] + [final]
@@ -201,7 +285,8 @@ def quadra(elements: list[dict], seccions: list[dict], beats: list[dict], acords
     # Repartiment dels elements per les fronteres noves
     per_seccio: list[list[dict]] = [[] for _ in seccions]
     entrades: list[list[list]] = [[] for _ in seccions]  # acords de cua que passen a la secció següent
-    for si, s in enumerate(seccions):
+    for so, s in enumerate(originals):
+        si = nou_idx.get(so, 0)
         for i in s["elements"]:
             e = elements[i]
             if e["tipus"] == "linia":
@@ -254,6 +339,9 @@ def quadra(elements: list[dict], seccions: list[dict], beats: list[dict], acords
         l = elems[0]
         if not any(a[2] <= inicis[si] + tol for a in l["acords"]) and (et := sonant(max(inicis[si], l["start"]))):
             l = elems[0] = {**l, "acords": [[0, et, l["start"]]] + [a for a in l["acords"] if a[0] > 0]}
+
+    for si, elems in enumerate(per_seccio):
+        per_seccio[si] = _cua_a_la_linia(elems, compas, sonant)
 
     nous_elements: list[dict] = []
     noves: list[dict] = []

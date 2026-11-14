@@ -10,6 +10,11 @@ l'anàlisi sap a quina secció de la tab correspon. Llavors:
 - **Noms**: el tipus més votat de cada tram (Estrofa, Tornada, Pont…).
 - **Instrumentals**: el tipus de la secció de la tab (Intro, Solo, Interludi, Outro) que té els
   acords que hi cauen.
+- **Cua o cap**: si la tab escriu els acords de la zona dins la mateixa secció que la línia
+  d'abans (al final d'una línia de lletra, o en una línia d'acords seguida de més lletra) o que la
+  de després, la zona és la cua o el cap d'aquella secció i no un instrumental. El vot (`vot_cua`,
+  de -1 a 1) el fa servir `postprocess/seccions.quadra`. Una línia d'acords al final del bloc no
+  vota: moltes tabs no posen títol als solos.
 """
 
 from __future__ import annotations
@@ -44,6 +49,32 @@ def _vota_instrumental(al: Alineacio, e: dict, vores) -> str | None:
             if tipus:
                 vots[tipus] += vores[a.fi] - t
     return vots.most_common(1)[0][0] if vots else None
+
+
+def _vota_cua(al: Alineacio, e: dict, vores, abans, despres) -> tuple[float, float]:
+    """(durada dels acords de la zona que la tab posa a la secció d'abans o de després, durada dels
+    que posa en una altra secció). `abans`/`despres`: (secció, repetició) de la tab a les línies veïnes."""
+    linies = al.tab.linies
+    continua = {}  # línia d'acords seguida de lletra de la mateixa secció i repetició
+
+    def segueix_lletra(li: int) -> bool:
+        if li not in continua:
+            clau = (linies[li].seccio, linies[li].repeticio)
+            continua[li] = any(l.text for l in linies[li + 1:] if (l.seccio, l.repeticio) == clau)
+        return continua[li]
+    cua = propi = 0.0
+    for a in al.acords:
+        t = vores[a.inici]
+        l = linies[a.linia]
+        if not (e["start"] <= t < e["end"]) or l.seccio is None:
+            continue
+        d = vores[a.fi] - t
+        clau = (l.seccio, l.repeticio)
+        if clau == despres or (clau == abans and (l.text or segueix_lletra(a.linia))):
+            cua += d
+        elif clau != abans:
+            propi += d
+    return cua, propi
 
 
 def corregeix(elements: list[dict], seccions: list[dict], fonts: list[tuple[Alineacio, float]],
@@ -99,14 +130,24 @@ def corregeix(elements: list[dict], seccions: list[dict], fonts: list[tuple[Alin
             continue
         actual = seccions[seccio_de[i]]["label"] if i in seccio_de else "Instrumental"
         vots = Counter({actual: PES_DETECCIO})
-        for al, w in fonts:
+        abans = max((l for l in linies if l < i), default=None)
+        despres = min((l for l in linies if l > i), default=None)
+        a_favor = total = 0.0
+        for (al, w), sec in zip(fonts, per_font):
             t = _vota_instrumental(al, e, vores)
             if t:
                 vots[t] += w
+            cua, propi = _vota_cua(al, e, vores, sec.get(abans), sec.get(despres))
+            if cua + propi > 0:
+                a_favor += w * (cua - propi) / (cua + propi)
+                total += w
         etiqueta = vots.most_common(1)[0][0]
         if etiqueta in ("Estrofa", "Tornada", "Pre-tornada"):
             etiqueta = actual  # una zona sense veu no és una estrofa (els acords d'una entrada)
-        noves.append({"label": etiqueta, "elements": [i]})
+        nova = {"label": etiqueta, "elements": [i]}
+        if total:
+            nova["vot_cua"] = round(a_favor / (total + PES_DETECCIO), 3)  # la detecció s'absté
+        noves.append(nova)
     noves.sort(key=lambda s: s["elements"][0])
 
     fusionades: list[dict] = []

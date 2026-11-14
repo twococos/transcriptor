@@ -5,16 +5,59 @@ Les referències de la BD també tenen errors: és una mesura de concordança, n
 
 from __future__ import annotations
 
+import bisect
 import re
 
 import numpy as np
 
+from ..fonts.normalitza import _RE_REPETICIO_FINAL, _RE_REPETICIO_SOLA, _vegades
 from ..notation import NOTES, arrel_i_sufix, majmin, nota
 from ..structure import SECTION_TYPES
 from ..text import normalitza, wer
 
 _RE_CH = re.compile(r"<ch>([^<]*)</ch>")
 _RE_SEC = re.compile(r"^\s*<sec>([^<]*)</sec>\s*$")
+
+
+def desplega_repeticions(content: str) -> str:
+    """El content amb les marques de repetició desplegades, com les llegeixen la web i les fonts:
+    "x2" sol repeteix des de la secció o la marca anterior, i "(x2)" al final repeteix la línia.
+    Així una roda escrita amb "(x3)" compta igual que escrita tres vegades."""
+    sortida: list[str] = []
+    inici_bloc = 0
+    for linia in content.split("\n"):
+        if _RE_SEC.match(linia):
+            sortida.append(linia)
+            inici_bloc = len(sortida)
+            continue
+        net = re.sub(r"\s+", " ", _RE_CH.sub("", linia)).strip()
+        m = _RE_REPETICIO_SOLA.match(net) if net and not _RE_CH.search(linia) else None
+        if m:
+            bloc = sortida[inici_bloc:]
+            for _ in range(_vegades(m) - 1):
+                sortida.extend(bloc)
+            inici_bloc = len(sortida)
+            continue
+        m = _RE_REPETICIO_FINAL.search(linia) if net else None
+        if m and m.start() > 0:
+            sortida.extend([linia[: m.start()].rstrip()] * _vegades(m))
+            continue
+        sortida.append(linia)
+    return "\n".join(sortida)
+
+
+def llargades_seccions(seccions: list, beats: list) -> dict:
+    """Compassos de cada secció de l'anàlisi: fracció de múltiples de 4 i instrumentals curts."""
+    terres = [b.t for b in beats if b.beat == 1]
+    if len(terres) < 2 or not seccions:
+        return {}
+    llargs = [(s.label, bisect.bisect_left(terres, s.end - 0.1) - bisect.bisect_left(terres, s.start - 0.1))
+              for s in seccions]
+    instrumentals = ("intro", "instrumental", "solo", "interludi", "outro")
+    return {
+        "seccions_x4": round(sum(n % 4 == 0 for _, n in llargs) / len(llargs), 3),
+        "instrumentals_curts": sum(l.lower() in instrumentals and n < 4 for l, n in llargs),
+    }
 
 
 def llegeix_content(content: str) -> list[dict]:

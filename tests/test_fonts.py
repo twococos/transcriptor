@@ -146,3 +146,21 @@ def test_seccions_votades_per_les_tabs():
     noves, canvis = fonts_seccions.corregeix(elements, detectades, [(f.al, f.pes) for f in r.consens.fonts], g.vores)
     assert [(s["label"], s["elements"]) for s in noves] == [("Estrofa", [0, 1]), ("Tornada", [2, 3])]
     assert canvis == 2
+
+
+def test_vot_de_cua_de_les_tabs():
+    from types import SimpleNamespace as NS
+    # Tab: estrofa (lletra, acords al final de la línia, línia d'acords i més lletra) i un solo sense títol
+    linies = [NS(text="hola que tal", seccio=0, repeticio=0), NS(text="", seccio=0, repeticio=0),
+              NS(text="anem a casa", seccio=0, repeticio=0), NS(text="", seccio=0, repeticio=0),
+              NS(text="tornada", seccio=1, repeticio=0)]
+    al = NS(tab=NS(linies=linies), acords=[NS(inici=k, fi=k + 1, linia=li) for k, li in enumerate([0, 1, 3, 4])])
+    vores = [0.0, 2.0, 4.0, 6.0, 8.0]
+    zona = lambda a, b: {"start": a, "end": b}  # noqa: E731
+    # Acords al final d'una línia de lletra, o en una línia d'acords seguida de més lletra: cua
+    assert fonts_seccions._vota_cua(al, zona(0, 4), vores, (0, 0), (1, 0)) == (4.0, 0.0)
+    # Línia d'acords al final del bloc (un solo sense títol): no vota
+    assert fonts_seccions._vota_cua(al, zona(4, 6), vores, (0, 0), (1, 0)) == (0.0, 0.0)
+    # Acords que la tab posa a la secció de després: cap; en una altra secció: propi
+    assert fonts_seccions._vota_cua(al, zona(6, 8), vores, (0, 0), (1, 0)) == (2.0, 0.0)
+    assert fonts_seccions._vota_cua(al, zona(6, 8), vores, (0, 0), (2, 0)) == (0.0, 2.0)

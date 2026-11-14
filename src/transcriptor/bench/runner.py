@@ -12,6 +12,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import re
 import time
 import traceback
 from pathlib import Path
@@ -41,9 +42,12 @@ def _dataset(fitxer: Path, ids: set[int] | None, n: int) -> list[dict]:
 
 
 def avalua(canco: dict, content: str, analisi) -> dict:
-    ref = canco["content"]
     fila = {"id": canco["id"], "titol": canco["title"], "artista": canco["artist"], "estat": canco["state"]}
-    fila.update(metrics.qualitat_referencia(ref))
+    fila.update(metrics.qualitat_referencia(canco["content"]))
+    fila["rodes"] = content.count("(x") + len(re.findall(r"^x\d+$", content, re.M))
+    # Les repeticions ("x2", "(x3)") es despleguen als dos costats: comprimir no canvia les xifres
+    ref = metrics.desplega_repeticions(canco["content"])
+    content = metrics.desplega_repeticions(content)
     ac = metrics.acords(ref, content)
     fila.update(ac)
     fila["to_ref"] = f"{canco['key']}+{canco['capo'] or 0}"
@@ -57,6 +61,7 @@ def avalua(canco: dict, content: str, analisi) -> dict:
                                                        analisi.key.mode if analisi.key else None)
     fila.update(metrics.collocacio(ref, content, ac["transport"]))
     fila.update(metrics.estructura(ref, content))
+    fila.update(metrics.llargades_seccions(analisi.sections, analisi.beats))
     fila["compas"] = f"{analisi.tempo.time_signature[0]}/{analisi.tempo.time_signature[1]}"
     fila["bpm"] = analisi.tempo.bpm
     fila["idioma"] = analisi.meta.language

@@ -12,7 +12,8 @@ import statistics
 from pathlib import Path
 
 RESULTATS = Path("work/bench/resultats")
-CAMPS = ["acords_recall", "acords_precisio", "septimes_recall", "septimes_precisio", "collocacio", "estructura"]
+CAMPS = ["acords_recall", "acords_precisio", "septimes_recall", "septimes_precisio", "collocacio", "estructura",
+         "seccions_x4"]
 
 
 def _llegeix(nom: str) -> dict[str, dict]:
