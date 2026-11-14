@@ -124,8 +124,8 @@ def test_acordscatala_cerca(xarxa):
     respostes["https://www.acordscatala.cat/ca/sau"] = _html("acordscatala-cerca.html")
     cs = acordscatala.cerca("Boig per tu", "Sau", "ca")
     assert [(c.url, c.titol, c.artista) for c in cs] == [(URL_AC, "Boig per tu", "Sau")]
-    demanades.clear()
-    assert acordscatala.cerca("Boig per tu", "Sau", "es") == [] and demanades == []
+    # L'idioma no compta (el de la BD pot ser erroni): la pàgina de l'artista ja filtra
+    assert [c.url for c in acordscatala.cerca("Boig per tu", "Sau", "es")] == [URL_AC]
 
 
 # ── GuitarTuna ──────────────────────────────────────────────────────────────────────────────────

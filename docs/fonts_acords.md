@@ -18,7 +18,7 @@ la lletra (LRCLIB). Codi a `src/transcriptor/fonts/` i `src/transcriptor/stages/
    | LaCuerda | `busca.php` + pàgina de la cançó | HTTP | versions; sense valoració a l'HTML |
    | AcordesWeb | `buscar.php` | HTTP | fins a 2 versions |
    | GuitarTuna | llistat d'artistes per lletra → pàgina de l'artista | HTTP | només artistes de la primera pàgina |
-   | acordscatala | pàgina de l'artista | HTTP | només si l'idioma és català |
+   | acordscatala | pàgina de l'artista | HTTP | només artistes catalans (l'idioma de la cançó no compta) |
 
    El navegador és l'Edge o el Chrome del sistema sense finestra, controlat per DevTools
    (`fonts/navegador.py`). S'engega amb el seu User-Agent sense "Headless" (Akamai rebutja

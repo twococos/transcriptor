@@ -1,7 +1,8 @@
 """Acords Català (www.acordscatala.cat): només música en català, amb els acords en solfeig (DO, REm,
 SOL#m...), que es deixen tal com surten (els passa a lletres normalitza.py).
 
-- Cerca (només si l'idioma és català o no se sap): no té cercador usable, però la pàgina d'artista
+- Cerca (sigui quin sigui l'idioma: el de la BD de vegades és erroni, i la pàgina de l'artista ja
+  filtra, perquè només hi ha artistes catalans): no té cercador usable, però la pàgina d'artista
   https://www.acordscatala.cat/ca/{slug-artista} llista totes les cançons
   (`section.info_grup .cancons_grup li a`: títol, `<br>`, `<span>` amb l'àlbum). Es tria el títol
   amb `acceptable`. Com al generador de CSV del canconer (api/admin/scrape-artist).
@@ -61,7 +62,7 @@ def cancons_artista(html: str, url: str) -> tuple[str, list[tuple[str, str]]]:
 
 
 def cerca(titol: str, artista: str, idioma: str | None = None) -> list[Candidat]:
-    if idioma not in (None, "ca") or not artista:
+    if not artista:
         return []
     try:
         slugs = dict.fromkeys([slug(re.sub(r"['’`´]", "", artista)), slug(artista)])
