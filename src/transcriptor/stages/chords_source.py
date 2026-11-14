@@ -1,7 +1,7 @@
 """Etapa chords_source: tabs d'acords de la cançó a diverses pàgines (vegeu fonts/).
 
-Es busca a tots els llocs alhora (un fil per lloc; Ultimate Guitar amb el navegador sense
-finestra, si n'hi ha) i es baixen les versions que semblen la cançó. Les URL afegides a mà des de
+Es busca a tots els llocs alhora (un fil per lloc; Ultimate Guitar, Cifra Club i E-Chords amb el
+navegador sense finestra, si n'hi ha) i es baixen les versions que semblen la cançó. Les URL afegides a mà des de
 l'admin es baixen sempre; les bloquejades, mai. Mai fa fallar la feina: sense xarxa o sense
 resultats, la llista és buida i l'anàlisi és la de l'àudio sol.
 """
@@ -19,10 +19,12 @@ from ..fonts.model import Candidat, TabCrua
 
 log = logging.getLogger(__name__)
 
-VERSIO = 1  # canvia-la si canvia la cerca o el parseig (invalida la cache)
-LLOCS = ["ultimate_guitar", "cifraclub", "lacuerda", "guitartuna", "acordscatala"]
+VERSIO = 2  # canvia-la si canvia la cerca o el parseig (invalida la cache)
+LLOCS = ["ultimate_guitar", "cifraclub", "echords", "lacuerda", "acordesweb", "guitartuna", "acordscatala"]
+NAVEGADOR = {"ultimate_guitar", "cifraclub", "echords"}  # sense navegador no se'n pot baixar res
 DOMINIS = {"ultimate-guitar.com": "ultimate_guitar", "cifraclub.com": "cifraclub", "cifraclub.com.br": "cifraclub",
-           "lacuerda.net": "lacuerda", "guitartuna.com": "guitartuna", "acordscatala.cat": "acordscatala"}
+           "e-chords.com": "echords", "lacuerda.net": "lacuerda", "acordesweb.com": "acordesweb",
+           "guitartuna.com": "guitartuna", "acordscatala.cat": "acordscatala"}
 LIMIT_S = 120  # temps màxim de tota la cerca
 
 
@@ -43,9 +45,9 @@ def _cerca_lloc(lloc: str, titol: str, artista: str, idioma: str | None, bloquej
     m = _modul(lloc)
     if m is None:
         return []
-    extra = {"nav": nav} if lloc == "ultimate_guitar" else {}
+    extra = {"nav": nav} if lloc in NAVEGADOR else {}
     try:
-        candidats = [c for c in m.cerca(titol, artista, idioma, **extra) if c.url not in bloquejades]
+        candidats =[c for c in m.cerca(titol, artista, idioma, **extra) if c.url not in bloquejades]
         tabs = [m.baixa(c, **extra) for c in candidats]
     except Exception:  # noqa: BLE001 — un lloc que falla no ha d'aturar els altres
         log.info("Fonts d'acords: %s ha fallat", lloc, exc_info=True)
@@ -59,9 +61,9 @@ def _baixa_url(url: str, nav) -> TabCrua | None:
     if m is None:
         log.info("Fonts d'acords: no sé llegir %s", url)
         return None
-    extra = {"nav": nav} if lloc == "ultimate_guitar" else {}
+    extra = {"nav": nav} if lloc in NAVEGADOR else {}
     try:
-        tab = m.baixa(Candidat(lloc=lloc, url=url, titol="", artista=""), **extra)
+        tab =m.baixa(Candidat(lloc=lloc, url=url, titol="", artista=""), **extra)
     except Exception:  # noqa: BLE001
         log.info("Fonts d'acords: %s ha fallat", url, exc_info=True)
         return None
@@ -78,8 +80,8 @@ def obte(titol: str, artista: str, idioma: str | None = None, urls_extra: list[s
     llocs = llocs or LLOCS
     bloq = set(bloquejades or [])
     inici = time.monotonic()
-    usa_nav = navegador.disponible() and ("ultimate_guitar" in llocs or any(
-        lloc_de_url(u) == "ultimate_guitar" for u in urls_extra or []))
+    usa_nav = navegador.disponible() and (any(l in NAVEGADOR for l in llocs) or any(
+        lloc_de_url(u) in NAVEGADOR for u in urls_extra or []))
     nav_ctx = navegador.Navegador() if usa_nav else None
     try:
         nav = nav_ctx.__enter__() if nav_ctx else None
@@ -91,7 +93,7 @@ def obte(titol: str, artista: str, idioma: str | None = None, urls_extra: list[s
             manuals = ex.submit(lambda: [t for u in urls_extra or [] if u not in bloq
                                          for t in [_baixa_url(u, nav)] if t])
             futurs = [ex.submit(_cerca_lloc, l, titol, artista, idioma, bloq, nav) for l in llocs
-                      if l != "ultimate_guitar" or nav is not None]
+                      if l not in NAVEGADOR or nav is not None]
             tabs = list(manuals.result(timeout=LIMIT_S))
             for f in futurs:
                 try:

@@ -135,11 +135,13 @@ def cerca(titol: str, artista: str, idioma: str | None = None) -> list[Candidat]
 
 def linies_pre(pre: Tag, etiqueta: str = "a") -> list[Linia]:
     """Línies del <pre>: el text sense els acords (al seu lloc hi queden espais) i els acords
-    (el text de cada `<etiqueta>`; Cifra Club també ho fa servir, amb `<b>`)."""
+    (el text de cada `<etiqueta>`; Cifra Club també ho fa servir, amb `<b>`, i AcordesWeb). Els espais
+    de mida zero (Cifra Club) es treuen i els no separables (AcordesWeb) passen a ser espais."""
     linies: list[Linia] = [("", [])]
 
     def afegeix(text: str, acord: bool) -> None:
-        for i, tros in enumerate(text.replace("\r", "").replace("\t", "    ").split("\n")):
+        text = text.replace("\r", "").replace("\t", "    ").replace("​", "").replace("\xa0", " ")
+        for i, tros in enumerate(text.split("\n")):
             if i:
                 linies.append(("", []))
             actual, acords = linies[-1]

@@ -1,0 +1,137 @@
+{
+ "response": {
+  "numFound": 47,
+  "start": 0,
+  "maxScore": 148.60025,
+  "numFoundExact": true,
+  "docs": [
+   {
+    "art": "Oasis",
+    "dns": "oasis",
+    "txt": "Wonderwall",
+    "url": "wonderwall",
+    "img": "9/7/6/3/9763e45a3226bdaf992a94eab4533913-tb.jpg",
+    "imgm": "https://akamai.sscdn.co/letras/250x250/fotos/9/7/6/3/9763e45a3226bdaf992a94eab4533913.jpg",
+    "score": 0.88466465,
+    "features": {
+     "original_score": 148.60025,
+     "query_full_text_match": 9.280623,
+     "query_artist_match": 0.0,
+     "item_popularity": 5.759554,
+     "item_hits_norm": 0.8990035,
+     "item_ctr_30d": 0.09269569
+    },
+    "album_name": "(What's The Story) Morning Glory?",
+    "url_album": "whats-the-story-morning-glory-1995",
+    "id_album": 13171,
+    "b": 0,
+    "v": true,
+    "id_song": 1420,
+    "id_artist": 11,
+    "tipo": "2"
+   },
+   {
+    "art": "Capital Inicial",
+    "dns": "capital-inicial",
+    "txt": "Wonderwall",
+    "url": "wonderwall",
+    "img": "d/0/b/4/d0b4b8879ec7bebe772203e82f1599a9-tb.jpg",
+    "imgm": "https://akamai.sscdn.co/letras/250x250/fotos/d/0/b/4/d0b4b8879ec7bebe772203e82f1599a9.jpg",
+    "score": 0.42879844,
+    "features": {
+     "original_score": 58.591717,
+     "query_full_text_match": 9.280623,
+     "query_artist_match": 0.0,
+     "item_popularity": 2.161368,
+     "item_hits_norm": 0.33736596,
+     "item_ctr_30d": 0.056424677
+    },
+    "album_name": "",
+    "url_album": "",
+    "id_album": 0,
+    "b": 0,
+    "v": false,
+    "id_song": 218394,
+    "id_artist": 824,
+    "tipo": "2"
+   },
+   {
+    "art": "Ryan Adams",
+    "dns": "ryan-adams",
+    "txt": "Wonderwall",
+    "url": "wonderwall",
+    "img": "a/0/d/3/a0d397208ae418b77d56fe0c2416a2df-tb.jpg",
+    "imgm": "https://akamai.sscdn.co/letras/250x250/fotos/a/0/d/3/a0d397208ae418b77d56fe0c2416a2df.jpg",
+    "score": 0.3790817,
+    "features": {
+     "original_score": 49.94013,
+     "query_full_text_match": 9.280623,
+     "query_artist_match": 0.0,
+     "item_popularity": 1.60206,
+     "item_hits_norm": 0.2500641,
+     "item_ctr_30d": 0.06188513
+    },
+    "album_name": "Love Is Hell",
+    "url_album": "love-is-hell-2004",
+    "id_album": 15660,
+    "b": 0,
+    "v": false,
+    "id_song": 94013,
+    "id_artist": 16379,
+    "tipo": "2"
+   },
+   {
+    "art": "Ed Sheeran",
+    "dns": "ed-sheeran",
+    "txt": "Wonderwall",
+    "url": "wonderwall",
+    "img": "5/d/4/5/5d45f3920ea283e2bad27b626d20d9e2-tb.jpg",
+    "imgm": "https://akamai.sscdn.co/letras/250x250/fotos/5/d/4/5/5d45f3920ea283e2bad27b626d20d9e2.jpg",
+    "score": 0.36731273,
+    "features": {
+     "original_score": 48.1594,
+     "query_full_text_match": 9.280623,
+     "query_artist_match": 0.0,
+     "item_popularity": 1.4313638,
+     "item_hits_norm": 0.22342028,
+     "item_ctr_30d": 0.0710533
+    },
+    "album_name": "",
+    "url_album": "",
+    "id_album": 0,
+    "b": 0,
+    "v": false,
+    "id_song": 800920,
+    "id_artist": 131130,
+    "tipo": "2"
+   }
+  ]
+ },
+ "highlighting": {
+  "mus1420": {
+   "letra": [
+    "Today is gonna be the day That they're gonna throw it back to you By now  you should've somehow Realized what you gotta do I don't believe that anybody Feels the way I do about you now  Backbeat  the word is on the street That the fire in your heart is out I'm sure you've heard it all before But you never really had a doubt I don't believe that anybody Feels the way I do about you now  And all the roads We have to walk are winding And all the lights That lead us there are blinding  There are many things that I'd Like to say to you But I don't know how  Because maybe You're gonna be the one that saves me And after all You're my <b>wonderwall</b>  Today was gonna be the day But they'll never throw it back to you By now  you should've somehow Realized what you're not to do I don't believe that anybody Feels the way I do about you now  And all the roads That lead you there were winding And all the lights That light the way are blinding  There are many things that I'd Like to say to you But I don't know how  I said maybe You're gonna be the one that saves me And after all You're my <b>wonderwall</b>  I said maybe (I said maybe) You're gonna be the one that saves me And after all You're my <b>wonderwall</b>  I said maybe (I said maybe) You're gonna be the one that saves me (That saves me) You're gonna be the one that saves me (That saves me) You're gonna be the one that saves me (That saves me)"
+   ]
+  },
+  "mus218394": {
+   "letra": [
+    "Today is gonna be the day  That they're gonna throw it back to you  By now you should've somehow  Realized what you gotta do  I don't believe that anybody  Feels the way I do about you now    Backbeat the word was on the street  That the fire in your heart is out  I'm sure you've heard it all before  But you never really had a doubt  I don't believe that anybody feels  The way I do about you now    And all the roads we have to walk are winding  And all the lights that lead us there are blinding  There are many things that I would  Like to say to you  But I don't know how    Because maybe  You're gonna be the one that saves me  And after all  You're my <b>wonderwall</b>    Today was gonna be the day  But they'll never throw it back to you  By now you should've somehow  Realized what you're not to do  I don't believe that anybody  Feels the way I do  About you now    And all the roads that lead you there were winding  And all the lights that light the way are blinding  There are many things that I would like to say to you  But I don't know how    I said maybe  You're gonna be the one that saves me  And after all  You're my <b>wonderwall</b>    I said maybe  You're gonna be the one that saves me  And after all  You're my <b>wonderwall</b>    Said maybe  You're gonna be the one that saves me  You're gonna be the one that saves me  You're gonna be the one that saves me"
+   ]
+  },
+  "mus94013": {
+   "letra": [
+    "Today is gonna be the day That they're gonna give it back to you By now you should've somehow Realized what you gotta do I don't believe that anybody Feels the way I do about you now  Backbeat the word was on the street That the fire in your heart is out And I'm sure you've heard it all before But you never really had a doubt I don't believe that anybody feels The way I do about you now  And all the roads we have to walk are winding And all the lights that lead the way are blinding And there are many things that I would like to say to you But I don't know how  I said maybe You're gonna be the one that saves me And after all You're my <b>wonderwall</b>  Today was gonna be the day But they'll never bring it back to you By now you should've somehow Realized what you've gotta do I don't believe that anybody Feels the way I do About you now  And all the roads we have to walk are winding And all the lights that lead the way are blinding And there are many things that I would like to say to you But I don't know how  Said maybe You're gonna be the one that saves me You're gonna be the one that saves me And after all You're my <b>wonderwall</b> You're my <b>wonderwall</b> You're my <b>wonderwall</b> You're my <b>wonderwall</b> "
+   ]
+  },
+  "mus800920": {
+   "letra": [
+    "Today was gonna be the day  That they're gonna throw it back to you  By now you should've somehow  Realized what you got to do  I don't believe that anybody  Feels the way I do about you now    Back beat  the word is on the street  That the fire in your heart is out  I'm sure you've heard it all before  But you never really had a doubt  I don't believe that anybody  Feels the way I do about you now    And all the roads we have to walk are winding  And all the lights that lead the way are blinding  There are many things that I would like to say to you  But I don't know how    I said maybe  You're gonna be the one that saves me  And after all  You're my <b>wonderwall</b>    Today was gonna be the day  But they'll never throw it back to you  By now you should've somehow  Realized what you've got to do  I don't believe that anybody  Feels the way I do about you now    And all the roads we have to walk are winding  And all the lights that lead the way are blinding  There are many things that I would like to say to you  But I don't know how    I said maybe  You're gonna be the one that saves me  And after all  You're my <b>wonderwall</b>"
+   ]
+  },
+  "mus25384": {
+   "letra": [
+    "And after all You're my <b>wonderwall</b>  Today was gonna be the day? "
+   ]
+  }
+ }
+}

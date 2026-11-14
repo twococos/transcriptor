@@ -25,8 +25,8 @@ import numpy as np
 
 from .alinea import FINESTRA_COMPASSOS, Alineacio, Graella
 
-PRIOR_LLOC = {"bd": 1.5, "ultimate_guitar": 1.0, "cifraclub": 0.9, "guitartuna": 0.8, "lacuerda": 0.7,
-              "acordscatala": 0.6, "text": 1.0}
+PRIOR_LLOC = {"bd": 1.5, "ultimate_guitar": 1.0, "cifraclub": 0.9, "echords": 0.8, "guitartuna": 0.8,
+              "lacuerda": 0.7, "acordesweb": 0.7, "acordscatala": 0.6, "text": 1.0}
 BO_MANUAL = 1.3  # una tab triada a mà a l'admin
 MIN_ENCAIX = 0.45  # per sota, la tab es descarta (una altra versió, un altre to mal detectat…)
 ENCAIX_PLE = 0.8  # a partir d'aquí, pes complet

@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from transcriptor.fonts import http
-from transcriptor.fonts.llocs import acordscatala, cifraclub, guitartuna, lacuerda
+from transcriptor.fonts.llocs import acordesweb, acordscatala, cifraclub, echords, guitartuna, lacuerda
 
 FIXTURES = Path(__file__).parent / "fixtures" / "fonts"
 
@@ -158,10 +158,33 @@ def test_guitartuna_cerca(xarxa):
 
 
 # ── Cifra Club ──────────────────────────────────────────────────────────────────────────────────
-# Cifra Club respon 403 a http.obte (Akamai), així que no hi ha cap pàgina real desada: aquesta és
-# sintètica, amb l'estructura que documenta src/lib/importers/cifraclub.ts del canconer.
+# cifraclub.html és la pàgina real (baixada amb el navegador) reduïda al títol, el to, el capo i el
+# <pre>. CIFRACLUB és l'estructura antiga, la que documenta src/lib/importers/cifraclub.ts.
 
-CIFRACLUB = """<html lang="pt-BR"><head><title>Wonderwall - Oasis - Cifra Club</title></head><body>
+URL_CC = "https://www.cifraclub.com.br/oasis/wonderwall/"
+
+
+def test_cifraclub_parseja_pagina_real():
+    tab = cifraclub.parseja(_html("cifraclub.html"), URL_CC)
+    linies = _comprova_basic(tab, "Wonderwall", "Oasis", min_sec=5)
+    assert (tab.capo, tab.to) == (2, "F#m")
+    assert linies[:2] == ["<sec>Intro</sec>", "<ch>Em7</ch>  <ch>G</ch>  <ch>D4</ch>  <ch>A7(4)</ch>"]
+    assert "<ch>Em7</ch>    Today is g<ch>G</ch>onna be the day" in linies
+    assert "<sec>Refrão</sec>" in linies
+    # Sense espais de mida zero, fletxes de rasgueig ni "Parte 2 de 3"
+    assert not any(c in tab.content for c in ("​", "↓", "Parte "))
+
+
+def test_cifraclub_cerca(xarxa):
+    respostes, demanades = xarxa
+    respostes[cifraclub.URL_CERCA] = _html("cifraclub-cerca.json")
+    cs = cifraclub.cerca("Wonderwall", "Oasis", None)
+    assert [(c.url, c.titol, c.artista) for c in cs] == [(URL_CC, "Wonderwall", "Oasis")]
+    assert demanades == [cifraclub.URL_CERCA]
+    assert cifraclub.baixa(cs[0]) is None  # sense navegador, la pàgina (Akamai) no es pot baixar
+
+
+CIFRACLUB ="""<html lang="pt-BR"><head><title>Wonderwall - Oasis - Cifra Club</title></head><body>
 <h1 class="t1">Wonderwall</h1><h2 class="t3"><a href="/oasis/">Oasis</a></h2>
 <span id="cifra_tom">tom: <a>Em</a></span> <span id="cifra_capo">capotraste na <a>2ª casa</a></span>
 <div class="cifra_cnt"><pre>[Intro] <b>Em7</b>  <b>G</b>  <b>Dsus4</b>  <b>A7(4)</b>
@@ -195,14 +218,51 @@ def test_cifraclub_parseja():
     assert linies[-1] == "<ch>C9</ch>            <ch>D</ch>        <ch>Em7</ch>      (2x)"
 
 
-def test_cifraclub_cerca(xarxa):
+# ── AcordesWeb ──────────────────────────────────────────────────────────────────────────────────
+
+URL_AW = "https://acordesweb.com/cancion/cesk-freixas/la-petita-rambla-del-poble-sec"
+
+
+def test_acordesweb_parseja():
+    tab = acordesweb.parseja(_html("acordesweb.html"), URL_AW)
+    linies = _comprova_basic(tab, "La petita rambla del poble sec", "Cesk Freixas", min_sec=0)
+    # Els espais no separables de la web passen a ser espais normals
+    assert linies[0] == "ass<ch>G</ch>egut a la Plaça del S<ch>B7</ch>urtidor"
+    assert "\xa0" not in tab.content
+
+
+def test_acordesweb_cerca(xarxa):
     respostes, demanades = xarxa
-    respostes["https://www.cifraclub.com.br/oasis/wonderwall/"] = CIFRACLUB
-    cs = cifraclub.cerca("Wonderwall", "Oasis", None)
-    assert [(c.url, c.titol, c.artista) for c in cs] == [("https://www.cifraclub.com.br/oasis/wonderwall/",
-                                                         "Wonderwall", "Oasis")]
+    respostes[acordesweb.URL_CERCA] = _html("acordesweb-cerca.html")
+    cs = acordesweb.cerca("La petita rambla del Poble Sec", "Cesk Freixas", "ca")
+    assert [(c.url, c.titol, c.artista) for c in cs] == [(URL_AW, "La petita rambla del poble sec", "Cesk Freixas")]
     demanades.clear()
-    tab = cifraclub.baixa(cs[0])  # amb l'HTML de la cerca, sense tornar-la a demanar
-    assert tab is not None and demanades == []
-    assert cifraclub.urls_candidates("Let it be", "The Beatles")[:2] == [
-        "https://www.cifraclub.com.br/the-beatles/let-it-be/", "https://www.cifraclub.com.br/beatles/let-it-be/"]
+    assert acordesweb.cerca("Wonderwall", "Oasis", "en") == []
+    assert len(demanades) == 2  # títol i artista, i després només el títol
+
+
+# ── E-Chords ────────────────────────────────────────────────────────────────────────────────────
+
+URL_EC = "https://www.e-chords.com/es/acordes/oasis/wonderwall"
+
+
+def test_echords_parseja():
+    tab = echords.parseja(_html("echords.html"), URL_EC)
+    linies = _comprova_basic(tab, "Wonderwall", "Oasis")
+    assert tab.capo == 2
+    # Sense l'alternativa "(Simplified: Em G D A)"
+    assert linies[:3] == ["<sec>Intro</sec>", "<ch>Em7</ch>    <ch>G</ch>  <ch>D4</ch>   <ch>A7(4)</ch>      (4x)",
+                          "<ch>Em7</ch>Today is <ch>G</ch>gonna be the day"]
+    assert "Simplified" not in tab.content
+
+
+def test_echords_cerca(xarxa):
+    respostes, demanades = xarxa
+    respostes["https://www.e-chords.com/oasis"] = _html("echords-artista.html")
+    cs = echords.cerca("Wonderwall", "Oasis", None)
+    assert [(c.url, c.titol, c.versio) for c in cs] == [(URL_EC, "Wonderwall", 1),
+                                                       (URL_EC + "-ver-2", "Wonderwall (ver. 2)", 2)]
+    assert demanades == ["https://www.e-chords.com/oasis"]
+    assert echords.urls_artista("The Beatles") == ["https://www.e-chords.com/the-beatles",
+                                                   "https://www.e-chords.com/beatles"]
+    assert echords.baixa(cs[0]) is None  # sense navegador (Cloudflare) no es baixa res

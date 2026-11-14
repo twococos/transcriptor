@@ -1,4 +1,4 @@
-# Fonts d'acords externes (0.1.14)
+# Fonts d'acords externes (0.1.14, llocs nous a la 0.1.15)
 
 El transcriptor contrasta els acords i les seccions de l'anàlisi amb tabs d'internet, com ja fa amb
 la lletra (LRCLIB). Codi a `src/transcriptor/fonts/` i `src/transcriptor/stages/chords_source.py`.
@@ -10,13 +10,20 @@ la lletra (LRCLIB). Codi a `src/transcriptor/fonts/` i `src/transcriptor/stages/
    El resultat es desa a la cache (`chords_source.json`) i viatja dins les dades crues (`paquet.py`,
    camp `fonts`), així que una feina `update` no torna a baixar res.
 
-   | Lloc | Com | Notes |
-   |---|---|---|
-   | Ultimate Guitar | navegador sense finestra (Edge/Chrome del sistema per DevTools, `fonts/navegador.py`) | fins a 3 versions, amb valoració i vots |
-   | LaCuerda | `busca.php` + pàgina de la cançó | versions; sense valoració a l'HTML |
-   | GuitarTuna | llistat d'artistes per lletra → pàgina de l'artista | només artistes de la primera pàgina |
-   | acordscatala | pàgina de l'artista | només si l'idioma és català |
-   | Cifra Club | URL per slug | Akamai respon 403: avui no troba res |
+   | Lloc | Cerca | Tab | Notes |
+   |---|---|---|---|
+   | Ultimate Guitar | navegador | navegador | Cloudflare; fins a 3 versions, amb valoració i vots |
+   | Cifra Club | API del cercador (`solr.sscdn.co`) | navegador | Akamai; una versió |
+   | E-Chords | pàgina de l'artista | navegador | Cloudflare a les tabs; fins a 2 versions |
+   | LaCuerda | `busca.php` + pàgina de la cançó | HTTP | versions; sense valoració a l'HTML |
+   | AcordesWeb | `buscar.php` | HTTP | fins a 2 versions |
+   | GuitarTuna | llistat d'artistes per lletra → pàgina de l'artista | HTTP | només artistes de la primera pàgina |
+   | acordscatala | pàgina de l'artista | HTTP | només si l'idioma és català |
+
+   El navegador és l'Edge o el Chrome del sistema sense finestra, controlat per DevTools
+   (`fonts/navegador.py`). S'engega amb el seu User-Agent sense "Headless" (Akamai rebutja
+   "HeadlessChrome" i Cloudflare no passa si es canvia per pestanya). Els dominis diferents van en
+   paral·lel; dins un domini, una pàgina cada 2 s. Sense navegador, aquests tres llocs se salten.
 
    Les URL afegides a mà a l'admin es baixen sempre; les descartades, mai. Si el content de la BD
    l'ha escrit una persona, també és una font («bd»).
