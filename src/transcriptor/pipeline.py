@@ -35,6 +35,7 @@ from .schema import (Acord, Font, FontAcords, Groove, ImportResult, Linia, Meta,
 from .stages import (chords, chords_source, fetch, groove, lyrics_align, lyrics_asr, lyrics_source, rhythm,
                      separate)
 from .text import detecta_idioma, linies_de_text
+from .traca import Traca, top
 
 log = logging.getLogger(__name__)
 
@@ -323,7 +324,8 @@ def _tabs(c: Crues, cache: Cache, entrada: Entrada, cfg: Config, titol: str, art
 def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None = None,
             cache: Cache | None = None, en_fase: Callable[[int, str], None] | None = None,
             comprova: Callable[[], None] | None = None, dades: Crues | None = None,
-            previa: SongAnalysis | None = None, sense_audio: bool = False) -> Resultat:
+            previa: SongAnalysis | None = None, sense_audio: bool = False,
+            traca: Traca | None = None) -> Resultat:
     """`en_fase(i, nom)` es crida en començar cada fase (índex dins FASES).
 
     `comprova()` es crida sovint (entre fases i dins les llargues) i llança una excepció si s'ha
@@ -332,7 +334,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     Per actualitzar una anàlisi (feina `update`, vegeu versions.py): amb `dades` (paquet de dades
     crues) només es fa el postprocés; amb `sense_audio`, les dades crues surten de la cache local o
     SenseDadesCrues. `previa` és l'anàlisi que s'actualitza: se'n conserva l'estil si no hi ha
-    envolupants de l'acompanyament."""
+    envolupants de l'acompanyament. `traca` desa el resultat de cada pas del postprocés (traca.py)."""
     cfg = cfg or Config()
 
     def fase(i: int) -> None:
@@ -370,6 +372,12 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     gr = graella_acords(c.ritme, c.probs, c.per_trama, durada, cfg)
     correccions_ritme, compas, desfasament = gr["correccions"], gr["compas"], gr["desfasament"]
     segs = acords_de_graella(gr, cfg)
+    if traca is not None:
+        traca.pas("ritme", pulsacions_crues=c.ritme["pulsacions"], inicis_compas_crus=c.ritme["inicis_compas"],
+                  correccions=correccions_ritme, bpm=compas["bpm"], compas=compas["time_signature"],
+                  desfasament=desfasament)
+        traca.pas("probabilitats", vores=gr["vores"], etiquetes=gr["etiquetes"], top=top(gr["p_unitat"]))
+        traca.pas("acords_audio", segs=segs)
 
     ritme_estil = _estil(c.groove, compas, previa.rhythm if previa else None)
 
@@ -402,6 +410,11 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
         aparellades = None
         font_lletra["font"] = "whisper"
 
+    if traca is not None:
+        traca.pas("lletra", font=font_lletra["font"], asr=c.asr["paraules"], correccions_asr=temps["correccions"],
+                  paraules=paraules, linies=rangs, aparellades=aparellades,
+                  descartades=al["descartades"] if al else [], text=font_lletra["text"])
+
     # 8b. Fonts externes d'acords (tabs): segona passada del Viterbi amb els seus vots
     fonts_res = None
     tabs = _tabs(c, cache, entrada, cfg, titol, artista)
@@ -409,7 +422,7 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
         g = Graella(vores=gr["vores"], p_unitat=gr["p_unitat"], etiquetes=gr["etiquetes"], beats=compas["beats"],
                     desfasament=desfasament, paraules=paraules)
         try:
-            fonts_res = fonts_aplica.aplica(tabs, g, segs, lambda b: acords_de_graella(gr, cfg, b))
+            fonts_res = fonts_aplica.aplica(tabs, g, segs, lambda b: acords_de_graella(gr, cfg, b), traca)
             segs = fonts_res.segs
         except Exception:  # noqa: BLE001 — les fonts són un extra: sense elles l'anàlisi serveix
             log.warning("No s'han pogut aplicar les fonts d'acords", exc_info=True)
@@ -418,12 +431,18 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
     acords_btc = [dict(s, label=s.get("raw", s["label"])) for s in segs]
     tonalitat = key_mod.estima(acords_btc)
     capo = key_mod.suggereix_capo(tonalitat) if (tonalitat and cfg.extra.get("aplicar_capo", True)) else 0
+    if traca is not None:
+        traca.pas("acords_fonts", segs=segs, resum=fonts_res.resum if fonts_res else None)
+        traca.pas("tonalitat", tonalitat=tonalitat, capo=capo)
 
     # 9. Fusió, estructura i render
     fase(7)
     elements = merge.colloca(paraules, rangs, segs, compas["beats"], durada)
     durada_compas = merge._durada_compas(compas["beats"])
     seccions = structure.detecta(elements, durada, durada_compas)
+    if traca is not None:
+        traca.pas("estructura", elements=elements, seccions=seccions,
+                  content=render.content(elements, seccions, capo))
     if fonts_res is not None and fonts_res.consens is not None:
         try:
             seccions, n = fonts_seccions.corregeix(elements, seccions,
@@ -431,8 +450,12 @@ def executa(entrada: Entrada, cfg: Config | None = None, perfil: Perfil | None =
             fonts_res.resum["linies_seccio_canviada"] = n
         except Exception:  # noqa: BLE001
             log.warning("No s'han pogut contrastar les seccions amb les fonts", exc_info=True)
-    elements, seccions = seccions_mod.quadra(elements, seccions, compas["beats"], segs, durada)
+    if traca is not None:
+        traca.pas("seccions_fonts", seccions=seccions, content=render.content(elements, seccions, capo))
+    elements, seccions = seccions_mod.quadra(elements, seccions, compas["beats"], segs, durada, traca)
     text_content = render.content(elements, seccions, capo)
+    if traca is not None:
+        traca.pas("final", elements=elements, seccions=seccions, content=text_content)
     cache.temps["postproces"] = round(time.perf_counter() - t0, 1)
 
     # 10. Resultat

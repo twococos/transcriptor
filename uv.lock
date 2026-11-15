@@ -3,8 +3,8 @@ revision = 5
 requires-python = "==3.11.*"
 resolution-markers = [
     "python_full_version >= '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
-    "python_full_version < '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
     "python_full_version >= '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "python_full_version < '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
     "python_full_version < '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'linux'",
 ]
 supported-markers = [
@@ -1626,8 +1626,8 @@ version = "2.14.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
-    "python_full_version < '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
     "python_full_version >= '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "python_full_version < '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
     "python_full_version < '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'linux'",
 ]
 dependencies = [
@@ -1657,8 +1657,8 @@ version = "2.14.1+cpu"
 source = { registry = "https://download.pytorch.org/whl/cpu" }
 resolution-markers = [
     "python_full_version >= '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
-    "python_full_version < '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
     "python_full_version >= '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "python_full_version < '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
     "python_full_version < '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'linux'",
 ]
 dependencies = [
@@ -1681,8 +1681,8 @@ version = "2.14.1+cu126"
 source = { registry = "https://download.pytorch.org/whl/cu126" }
 resolution-markers = [
     "python_full_version >= '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
-    "python_full_version < '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
     "python_full_version >= '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "python_full_version < '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
     "python_full_version < '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'linux'",
 ]
 dependencies = [
@@ -1713,8 +1713,8 @@ version = "2.11.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
-    "python_full_version < '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
     "python_full_version >= '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "python_full_version < '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
     "python_full_version < '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'linux'",
 ]
 wheels = [
@@ -1728,8 +1728,8 @@ version = "2.11.0+cpu"
 source = { registry = "https://download.pytorch.org/whl/cpu" }
 resolution-markers = [
     "python_full_version >= '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
-    "python_full_version < '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
     "python_full_version >= '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "python_full_version < '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
     "python_full_version < '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'linux'",
 ]
 wheels = [
@@ -1743,8 +1743,8 @@ version = "2.11.0+cu126"
 source = { registry = "https://download.pytorch.org/whl/cu126" }
 resolution-markers = [
     "python_full_version >= '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
-    "python_full_version < '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
     "python_full_version >= '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "python_full_version < '3.11.5' and platform_machine == 'AMD64' and sys_platform == 'win32'",
     "python_full_version < '3.11.5' and platform_machine == 'x86_64' and sys_platform == 'linux'",
 ]
 wheels = [
@@ -1782,7 +1782,7 @@ wheels = [
 
 [[package]]
 name = "transcriptor"
-version = "0.1.15"
+version = "0.1.16"
 source = { editable = "." }
 dependencies = [
     { name = "beat-this" },

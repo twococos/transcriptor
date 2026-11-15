@@ -1,0 +1,1371 @@
+<!doctype html>
+<html lang="ca">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Depurador · Transcriptor</title>
+<script>
+(() => { let t = null;
+  try { t = localStorage.getItem("depura-tema"); } catch (e) { /* sense emmagatzematge */ }
+  if (!t) t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  document.documentElement.dataset.theme = t; })();
+</script>
+<style>
+:root {
+  --bg: #f3f3f3; --panel: #fbfbfb; --text: #1c1c1c; --muted: #6b6b6b; --line: #e3e3e3; --control: #ffffff;
+  --primary: #005fb8; --primary-text: #ffffff; --accent: #e6781e; --accent-soft: #fcebdc;
+  --ok: #15803d; --ok-soft: #dcf2e3; --bad: #be123c; --bad-soft: #fde2e7; --warn: #b45309; --warn-soft: #fdf0d5;
+  --cursor: #be123c; --sel: #005fb8; color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #1c1c1c; --panel: #272727; --text: #fafafa; --muted: #9a9a9a; --line: #383838; --control: #2f2f2f;
+  --primary: #57c8ff; --primary-text: #000000; --accent: #f0903e; --accent-soft: #4a2c14;
+  --ok: #4ade80; --ok-soft: #173322; --bad: #fb7185; --bad-soft: #4a1c26; --warn: #fbbf24; --warn-soft: #3d2f10;
+  --cursor: #fb7185; --sel: #57c8ff; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; }
+header { position: sticky; top: 0; z-index: 5; background: var(--panel); border-bottom: 1px solid var(--line);
+  padding: 8px 16px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+header .marca { font-weight: 600; } header .marca b { color: var(--accent); }
+header .titol { font-weight: 600; font-size: 15px; }
+header .grup { display: inline-flex; gap: 6px; align-items: center; }
+nav { display: flex; gap: 2px; flex-wrap: wrap; }
+nav button { border-radius: 4px 4px 0 0; border-bottom: 2px solid transparent; }
+nav button.on { border-bottom-color: var(--accent); background: var(--accent-soft); }
+button, select, input[type=text], input[type=number] { font: inherit; font-size: 13px; color: var(--text);
+  background: var(--control); border: 1px solid var(--line); border-radius: 4px; padding: 4px 9px; }
+button { cursor: pointer; } button:hover { filter: brightness(.96); }
+:root[data-theme="dark"] button:hover { filter: brightness(1.15); }
+button.on { background: var(--accent-soft); border-color: var(--accent); }
+button.primari { background: var(--primary); color: var(--primary-text); border-color: var(--primary); }
+label { font-size: 13px; color: var(--muted); display: inline-flex; gap: 4px; align-items: center; }
+main { padding: 12px 16px 40px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.muted { color: var(--muted); } .petit { font-size: 12px; }
+.ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+.vista { display: none; } .vista.on { display: block; }
+#reproductor { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; margin-bottom: 10px; }
+#yt { width: 320px; aspect-ratio: 16/9; flex: none; }
+#yt:empty { display: none; }
+#yt iframe { width: 100%; height: 100%; border: 0; border-radius: 6px; }
+#contAudio audio { height: 32px; width: min(380px, 100%); }
+.ctrl { flex: 1; min-width: 300px; display: grid; gap: 8px; }
+.ctrl .fila { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+input[type=number] { width: 70px; }
+.viu { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+.titolet { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.gran { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+#vLinia { font-size: 19px; min-height: 1.4em; } #vLinia .ara { background: var(--accent-soft); border-radius: 3px; }
+#vLiniaSeg { min-height: 1.3em; }
+#avisosCanco { margin-bottom: 8px; font-size: 13px; color: var(--warn); }
+#avisosCanco:empty { display: none; }
+.origen { font-size: 11px; padding: 1px 6px; border-radius: 9px; background: var(--accent-soft); color: var(--text); font-weight: 400; }
+#subLlista { display: flex; gap: 4px; margin-bottom: 8px; }
+.temps { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); }
+#estat { font-size: 13px; color: var(--muted); }
+#estat.error { color: var(--bad); white-space: pre-wrap; font-family: Consolas, monospace; font-size: 12px; }
+/* Llista */
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { position: sticky; top: 0; background: var(--panel); cursor: pointer; user-select: none; white-space: nowrap; }
+td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tbody tr { cursor: pointer; } tbody tr:hover { background: var(--accent-soft); }
+.delta { font-size: 11px; margin-left: 3px; }
+/* Línia de temps */
+#carrils { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 8px; }
+#lt { position: relative; user-select: none; }
+#lt canvas { display: block; width: 100%; }
+#ltOver { position: absolute; left: 0; top: 0; cursor: crosshair; }
+#mini { display: block; width: 100%; height: 26px; margin-bottom: 6px; cursor: pointer; border-radius: 4px; }
+#tip { position: fixed; z-index: 10; pointer-events: none; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.15); display: none;
+  max-width: 360px; }
+.dues { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .dues { grid-template-columns: 1fr; } }
+#detall h3, .panel h3 { margin: 0 0 6px; font-size: 14px; }
+#detall .bloc { margin-bottom: 9px; }
+#detall .fila { display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
+.xip { display: inline-block; padding: 0 6px; border-radius: 3px; font-family: Consolas, monospace; font-size: 12px;
+  border: 1px solid var(--line); }
+.barra-p { display: inline-block; height: 8px; background: var(--primary); border-radius: 2px; vertical-align: middle; }
+/* Content */
+.ccols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.cfila { display: contents; }
+.ccel { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; white-space: pre; overflow-x: auto;
+  padding: 1px 4px; border-radius: 3px; min-height: 1.3em; }
+.ccel.sec { font-family: inherit; font-weight: 600; color: var(--accent); padding-top: 8px; }
+.ccel.clic { cursor: pointer; } .ccel.clic:hover { background: var(--accent-soft); }
+.ccel.ara { background: var(--accent-soft); }
+.ccel.sol { background: var(--warn-soft); }
+.ch { color: var(--primary); font-weight: 600; }
+.ch.dif { color: var(--bad); background: var(--bad-soft); }
+.ch.mogut { color: var(--warn); background: var(--warn-soft); }
+.ch.ok { color: var(--ok); }
+/* Fonts */
+.tab { margin-bottom: 12px; }
+.tab pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; margin: 6px 0 0; max-height: 520px;
+  overflow: auto; line-height: 1.25; }
+.tab .linia { cursor: pointer; } .tab .linia:hover { background: var(--accent-soft); }
+.tab .rep { opacity: .55; }
+.tab .p-si { color: var(--ok); font-weight: 600; } .tab .p-no { color: var(--bad); font-weight: 600; }
+.tab .p-nan { color: var(--muted); font-weight: 600; }
+.tab.descartada { opacity: .7; }
+.problema { cursor: pointer; } .problema:hover { background: var(--accent-soft); }
+.grup-prob { margin-bottom: 10px; }
+textarea { font: inherit; font-size: 13px; width: 100%; color: var(--text); background: var(--control);
+  border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="marca"><b>Transcriptor</b> · depurador</span>
+  <span class="grup"><label title="Execució del banc (mètriques i comparació)">Banc <select id="sRun"></select></label>
+    <label>vs <select id="sCompara"></select></label></span>
+  <span class="titol" id="titol"></span>
+  <button id="bRefes" title="Torna a calcular la traça amb el codi actual (i torna a baixar les dades, si és de la web)" style="display: none">Recalcula</button>
+  <span id="estat"></span>
+  <span style="flex: 1"></span>
+  <button id="bTema" title="Tema clar / fosc">◐</button>
+</header>
+<main>
+  <nav id="pestanyes"></nav>
+  <div id="avisosCanco"></div>
+  <div id="reproductor" class="panel" style="display: none">
+    <div id="yt"></div>
+    <div class="ctrl">
+      <div class="fila">
+        <button id="bPlay" class="primari">▶ Reprodueix</button>
+        <button id="bAnt" title="Compàs anterior (←)">◀ compàs</button><button id="bSeg" title="Compàs següent (→)">compàs ▶</button>
+        <span class="temps" id="tempsAra">0:00.0</span>
+        <label>Àudio <select id="sFontAudio"><option value="youtube">YouTube</option><option value="local">local</option></select></label>
+        <label>Velocitat <select id="sVel"><option>0.5</option><option>0.75</option><option selected>1</option><option>1.25</option></select></label>
+        <label title="Positiu: l'anàlisi es mostra més tard respecte de l'àudio">Desplaçament <input type="number" id="nDespl" value="0" step="10"> ms</label>
+        <button id="bClic" title="Tecla C">Clic</button><button id="bAcords" title="Tecla A">Acords sonors</button>
+        <button id="bBucle" title="Bucle: majúscules + arrossegar a la línia de temps">Bucle</button>
+      </div>
+      <div id="contAudio"></div>
+      <div class="viu">
+        <div><div class="titolet">Compàs</div><div class="gran" id="vCompas">—</div></div>
+        <div><div class="titolet">Acord</div><div class="gran" id="vAcord">—</div><div class="petit muted" id="vSeguent"></div></div>
+        <div style="flex: 1; min-width: 240px"><div class="titolet" id="vSeccio">—</div><div id="vLinia"></div><div id="vLiniaSeg" class="petit muted"></div></div>
+      </div>
+      <div class="petit muted">Espai: reprodueix · ← →: compàs · C: clic · A: acords · roda: zoom · arrossega: desplaça · Maj+arrossega: bucle</div>
+    </div>
+  </div>
+
+  <section class="vista" id="vLlista">
+    <div id="subLlista"><button data-o="banc">Banc</button><button data-o="web">Web (canconer)</button><button data-o="local">Caches locals</button></div>
+    <div id="lWeb" style="display: none">
+      <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center">
+        <input type="text" id="qWeb" placeholder="Cerca per títol o artista al canconer" style="width: 320px">
+        <span class="muted petit" id="infoWeb"></span>
+      </div>
+      <div class="panel" style="padding: 0; max-height: calc(100vh - 190px); overflow: auto">
+        <table id="tWeb"><thead><tr><th>id</th><th>Cançó</th><th>Versió</th><th>Dades crues</th><th>Analitzada</th><th>Traça</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+    <div id="lLocal" style="display: none">
+      <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center">
+        <input type="text" id="qLocal" placeholder="Filtra" style="width: 280px">
+        <span class="muted petit">Caches de <code>work/cache</code> (tx run) i de l'app (%LOCALAPPDATA%\Transcriptor\dades\cache), sense les del banc</span>
+      </div>
+      <div class="panel" style="padding: 0; max-height: calc(100vh - 190px); overflow: auto">
+        <table id="tLocal"><thead><tr><th>Cançó</th><th>Lloc</th><th>Vídeo</th><th>Àudio local</th><th>Data</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+    <div id="lBanc">
+    <div class="fila" style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center">
+      <input type="text" id="filtre" placeholder="Filtra per títol, artista o id" style="width: 280px">
+      <span class="muted petit" id="resumLlista"></span>
+      <span style="flex: 1"></span>
+      <button id="bAgregat" title="Llegeix (o calcula) la traça de cada cançó i compta els avisos de la pestanya Problemes">Problemes de tot el banc</button>
+    </div>
+    <div id="agregat" class="panel" style="display: none; margin-bottom: 10px"></div>
+    <div class="panel" style="padding: 0; max-height: calc(100vh - 150px); overflow: auto">
+      <table id="tLlista"><thead></thead><tbody></tbody></table>
+    </div>
+    </div>
+  </section>
+
+  <section class="vista" id="vTemps">
+    <div id="carrils"></div>
+    <div class="dues">
+      <div>
+        <canvas id="mini"></canvas>
+        <div id="lt" class="panel" style="padding: 0; overflow: hidden"><canvas id="ltBase"></canvas><canvas id="ltOver"></canvas></div>
+        <div class="petit muted" style="margin-top: 4px" id="llegenda"></div>
+      </div>
+      <div id="detall" class="panel"><span class="muted">Fes clic a la línia de temps per veure el detall d'un instant.</span></div>
+    </div>
+  </section>
+
+  <section class="vista" id="vContent">
+    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px">
+      <label>Esquerra <select id="sA"></select></label>
+      <label>Dreta <select id="sB"></select></label>
+      <label><input type="checkbox" id="cDesplega"> desplega repeticions</label>
+      <span class="petit"><span class="ch ok">acord igual</span> · <span class="ch mogut">a una altra paraula</span> ·
+        <span class="ch dif">diferent o no hi és</span> · <span class="ccel sol" style="display: inline">línia només en un costat</span></span>
+    </div>
+    <div class="panel"><div class="ccols" id="ccols"></div></div>
+  </section>
+
+  <section class="vista" id="vFonts"><div id="fonts"></div></section>
+  <section class="vista" id="vSeccions"><div id="seccions"></div></section>
+  <section class="vista" id="vLletra"><div id="lletra"></div></section>
+  <section class="vista" id="vProblemes"><div id="problemes"></div></section>
+</main>
+<div id="tip"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const mmss = (t) => t == null ? "—" : `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
+const pct = (x) => x == null || x === "" ? "—" : `${Math.round(100 * x)} %`;
+const guarda = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* res */ } };
+const llegeix = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+// ---------- Acords ----------
+const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const BEMOLLS = { Db: "C#", Eb: "D#", Gb: "F#", Ab: "G#", Bb: "A#", Cb: "B", Fb: "E" };
+function arrel(et) {
+  const m = /^([A-G])([#b]?)(.*)$/.exec((et || "").trim());
+  if (!m) return null;
+  const n = m[2] === "b" ? BEMOLLS[m[1] + "b"] : m[1] + m[2];
+  return { pc: NOTES.indexOf(n), resta: m[3] };
+}
+function majmin(et) {
+  const a = arrel(et);
+  if (!a) return null;
+  const s = a.resta.split("/")[0];
+  const menor = (/^m(?!aj)/.test(s) || s.startsWith("dim"));
+  return a.pc + (menor ? "m" : "");
+}
+function transposa(et, n) {
+  if (!n) return et;
+  const a = arrel(et);
+  if (!a) return et;
+  let resta = a.resta;
+  const b = /\/([A-G][#b]?)$/.exec(resta);
+  if (b) { const ab = arrel(b[1]); resta = resta.slice(0, b.index) + "/" + NOTES[(ab.pc + n + 120) % 12]; }
+  return NOTES[(a.pc + n + 120) % 12] + resta;
+}
+const majminSo = (et, n) => majmin(transposa(et, n));
+function colorAcord(et, alfa = 1) {
+  const a = arrel(et);
+  if (!a) return `rgba(128,128,128,${0.3 * alfa})`;
+  const quintes = (a.pc * 7) % 12, h = quintes * 30;
+  const menor = majmin(et).endsWith("m");
+  const fosc = document.documentElement.dataset.theme === "dark";
+  const l = fosc ? (menor ? 30 : 38) : (menor ? 72 : 82), s = menor ? 40 : 65;
+  return `hsla(${h}, ${s}%, ${l}%, ${alfa})`;
+}
+
+// ---------- Text i content ----------
+const normalitza = (t) => ((t || "").normalize("NFC").toLowerCase().replace(/’/g, "'").replace(/l\.l/g, "l·l")
+  .match(/[\p{L}\p{N}_·]+/gu) || []);
+const clau = (t) => normalitza(t).join(" ");
+const RE_REP_SOLA = /^[\(\[]?\s*(?:x\s*(\d+)|(\d+)\s*x|(bis))\s*[\)\]]?:?$/i;
+const RE_REP_FINAL = /\s*[\(\[]?\s*(?:x\s*(\d+)|(\d+)\s*x|(bis))\s*[\)\]]?\s*$/i;
+const vegades = (m) => Math.max(1, Math.min(8, m[3] ? 2 : parseInt(m[1] || m[2])));
+function desplega(content) {
+  const sortida = [];
+  let inici = 0;
+  for (const l of content.split("\n")) {
+    if (/^\s*<sec>[^<]*<\/sec>\s*$/.test(l)) { sortida.push(l); inici = sortida.length; continue; }
+    const net = l.replace(/<ch>[^<]*<\/ch>/g, "").replace(/\s+/g, " ").trim();
+    let m = net && !/<ch>/.test(l) ? RE_REP_SOLA.exec(net) : null;
+    if (m) { const bloc = sortida.slice(inici); for (let i = 1; i < vegades(m); i++) sortida.push(...bloc); inici = sortida.length; continue; }
+    m = net ? RE_REP_FINAL.exec(l) : null;
+    if (m && m.index > 0) { for (let i = 0; i < vegades(m); i++) sortida.push(l.slice(0, m.index).trimEnd()); continue; }
+    sortida.push(l);
+  }
+  return sortida.join("\n");
+}
+function llegeixContent(content) {
+  const linies = [];
+  let seccio = null;
+  for (const raw of (content || "").split("\n")) {
+    const ms = /^\s*<sec>([^<]*)<\/sec>\s*$/.exec(raw);
+    if (ms) { seccio = ms[1].trim(); linies.push({ tipus: "sec", text: seccio, acords: [] }); continue; }
+    let text = ""; const acords = [];
+    for (const tros of raw.split(/(<ch>[^<]*<\/ch>)/)) {
+      const mc = /^<ch>([^<]*)<\/ch>$/.exec(tros);
+      if (mc) acords.push({ pos: text.length, ch: mc[1].trim() }); else text += tros;
+    }
+    if (!text.trim() && !acords.length) continue;
+    linies.push({ tipus: /[\p{L}\p{N}]/u.test(text.replace(/\bx\d+\b/g, "")) ? "lletra" : "acords", text, acords, seccio });
+  }
+  return linies;
+}
+const indexParaula = (text, pos) => { const t = text.slice(0, pos + 1); return t.trim() ? Math.max(t.split(/\s+/).filter(Boolean).length - 1, 0) : 0; };
+
+// ---------- Estat ----------
+const S = { runs: [], run: null, compara: null, cancons: [], codi: null, clau: null, T: null, vista: "llista",
+  t0: 0, t1: 30, sel: null, bucle: null, notes: [], runB: null, carrils: llegeix("depura-carrils", {}),
+  llista: llegeix("depura-llista", "banc"), web: null, locals: null };
+const VISTES = [["llista", "Llista"], ["temps", "Línia de temps"], ["content", "Content"], ["fonts", "Fonts"],
+  ["seccions", "Seccions"], ["lletra", "Lletra i ritme"], ["problemes", "Problemes"]];
+
+function estat(text, error = false) { $("estat").textContent = text || ""; $("estat").className = error ? "error" : ""; }
+async function obte(url) {
+  const r = await fetch(url);
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || r.statusText);
+  return d;
+}
+function desaHash() {
+  const p = new URLSearchParams();
+  if (S.run) p.set("run", S.run);
+  if (S.compara) p.set("compara", S.compara);
+  if (S.clau) p.set("id", S.clau);
+  p.set("v", S.vista);
+  if (S.sel != null) p.set("t", S.sel.toFixed(1));
+  if (S.T) p.set("z", (S.t1 - S.t0).toFixed(0));
+  history.replaceState(null, "", "#" + p.toString());
+}
+
+// ---------- Pestanyes ----------
+function mostraVista(v) {
+  S.vista = v;
+  for (const [id] of VISTES) $("v" + id[0].toUpperCase() + id.slice(1)).classList.toggle("on", id === v);
+  for (const b of $("pestanyes").children) b.classList.toggle("on", b.dataset.v === v);
+  $("reproductor").style.display = v !== "llista" && S.T ? "flex" : "none";
+  if (v === "temps" && S.T) { redimensiona(); }
+  if (v === "content" && S.T) dibuixaContent();
+  desaHash();
+}
+for (const [id, nom] of VISTES) {
+  const b = document.createElement("button");
+  b.textContent = nom; b.dataset.v = id; b.onclick = () => mostraVista(id);
+  $("pestanyes").appendChild(b);
+}
+
+// ---------- Llista ----------
+const COLS = [["id", "id", "n"], ["titol", "Cançó"], ["acords_recall", "Recall", "p"], ["acords_precisio", "Precisió", "p"],
+  ["septimes_recall", "7a rec.", "p"], ["collocacio", "Col·loc.", "p"], ["estructura", "Estruct.", "p"],
+  ["seccions_x4", "Secc. ×4", "p"], ["instrumentals_curts", "Instr. curts", "n"], ["rodes", "Rodes", "n"],
+  ["to", "To"], ["ref_problemes", "Ref."]];
+let ordre = llegeix("depura-ordre", ["id", 1]);
+function valor(c, camp) {
+  if (camp === "id") return c.id;
+  if (camp === "titol") return `${c.titol} — ${c.artista}`;
+  const v = c.run?.[camp];
+  return v == null || v === "" ? null : isNaN(+v) ? v : +v;
+}
+function dibuixaLlista() {
+  const f = clau($("filtre").value);
+  const files = S.cancons.filter((c) => !f || clau(`${c.id} ${c.titol} ${c.artista}`).includes(f));
+  const [camp, dir] = ordre;
+  files.sort((a, b) => { const x = valor(a, camp), y = valor(b, camp);
+    if (x == null) return 1; if (y == null) return -1; return (x > y ? 1 : x < y ? -1 : 0) * dir; });
+  $("tLlista").tHead.innerHTML = "<tr>" + COLS.map(([k, nom, tipus]) =>
+    `<th data-k="${k}" style="${tipus ? "text-align:right" : ""}">${nom}${ordre[0] === k ? (ordre[1] > 0 ? " ▲" : " ▼") : ""}</th>`).join("") + "<th>Traça</th></tr>";
+  $("tLlista").tBodies[0].innerHTML = files.map((c) => "<tr data-clau='" + c.clau + "'>" + COLS.map(([k, , tipus]) => {
+    if (k === "titol") return `<td>${esc(c.titol)} <span class="muted">— ${esc(c.artista)}</span></td>`;
+    const v = valor(c, k);
+    let txt = tipus === "p" && typeof v === "number" ? pct(v) : esc(v ?? "—");
+    if (S.compara && c.compara && typeof v === "number" && k !== "id") {
+      const w = +c.compara[k];
+      if (!isNaN(w) && Math.abs(v - w) > 1e-6) {
+        const d = v - w, millor = (k === "instrumentals_curts") ? d < 0 : d > 0;
+        txt += `<span class="delta ${millor ? "ok" : "bad"}">${d > 0 ? "+" : ""}${tipus === "p" ? Math.round(100 * d) : +d.toFixed(2)}</span>`;
+      }
+    }
+    return `<td class="${tipus ? "n" : ""}">${txt}</td>`;
+  }).join("") + `<td>${c.traca ? "✓" : ""}${c.audio ? "" : " <span class='bad'>sense àudio</span>"}</td></tr>`).join("");
+  const amb = S.cancons.filter((c) => c.run);
+  $("resumLlista").textContent = `${files.length} cançons · ${amb.length} al run «${S.run || "—"}» · codi ${S.codi}`;
+}
+$("tLlista").tHead.onclick = (e) => { const k = e.target.closest("th")?.dataset.k; if (!k) return;
+  ordre = [k, ordre[0] === k ? -ordre[1] : (k === "id" || k === "titol" ? 1 : -1)]; guarda("depura-ordre", ordre); dibuixaLlista(); };
+for (const t of ["tLlista", "tWeb", "tLocal"])
+  $(t).tBodies[0].onclick = (e) => { const c = e.target.closest("tr")?.dataset.clau; if (c) obreCanco(c, "temps"); };
+$("filtre").oninput = dibuixaLlista;
+
+async function carregaLlista() {
+  const d = await obte(`/api/cancons?run=${encodeURIComponent(S.run || "")}&compara=${encodeURIComponent(S.compara || "")}`);
+  S.cancons = d.cancons; S.codi = d.codi;
+  dibuixaLlista();
+}
+
+// Web i caches locals
+function mostraLlista(o) {
+  S.llista = o; guarda("depura-llista", o);
+  for (const b of $("subLlista").children) b.classList.toggle("on", b.dataset.o === o);
+  $("lBanc").style.display = o === "banc" ? "" : "none";
+  $("lWeb").style.display = o === "web" ? "" : "none";
+  $("lLocal").style.display = o === "local" ? "" : "none";
+  if (o === "web" && !S.web) carregaWeb();
+  if (o === "local" && !S.locals) carregaLocals();
+}
+$("subLlista").onclick = (e) => { const o = e.target.dataset.o; if (o) mostraLlista(o); };
+let cercaWeb = null;
+async function carregaWeb() {
+  $("infoWeb").textContent = "Carregant…";
+  try {
+    const d = await obte(`/api/web?q=${encodeURIComponent($("qWeb").value)}`);
+    S.web = d.cancons;
+    $("infoWeb").textContent = `${d.cancons.length} cançons amb anàlisi a ${d.web}`;
+    $("tWeb").tBodies[0].innerHTML = d.cancons.map((c) => `<tr data-clau="web-${c.id}"><td class="n">${c.id}</td>` +
+      `<td>${esc(c.title)} <span class="muted">— ${esc(c.artist)}</span></td><td>${esc(c.app_version || "—")}</td>` +
+      `<td>${c.has_raw ? "✓" : "<span class='muted'>no (només l'anàlisi)</span>"}</td><td class="petit">${esc(c.analyzed_at || "")}</td><td></td></tr>`).join("");
+  } catch (e) { S.web = null; $("infoWeb").innerHTML = `<span class="bad">${esc(e.message)}</span>`; $("tWeb").tBodies[0].innerHTML = ""; }
+}
+$("qWeb").oninput = () => { clearTimeout(cercaWeb); cercaWeb = setTimeout(carregaWeb, 300); };
+async function carregaLocals() {
+  S.locals = await obte("/api/locals").catch(() => []);
+  dibuixaLocals();
+}
+function dibuixaLocals() {
+  const f = clau($("qLocal").value);
+  $("tLocal").tBodies[0].innerHTML = (S.locals || []).filter((c) => !f || clau(`${c.titol} ${c.artista}`).includes(f)).map((c) =>
+    `<tr data-clau="${esc(c.clau)}"><td>${esc(c.titol)} <span class="muted">— ${esc(c.artista)}</span></td><td>${c.lloc}</td>` +
+    `<td class="petit">${esc(c.youtube_id || "")}</td><td>${c.audio ? "✓" : ""}</td><td class="petit">${new Date(c.data * 1000).toLocaleString("ca")}</td></tr>`).join("");
+}
+$("qLocal").oninput = dibuixaLocals;
+$("sRun").onchange = () => { S.run = $("sRun").value || null; carregaLlista(); desaHash(); };
+$("sCompara").onchange = async () => { S.compara = $("sCompara").value || null; await carregaLlista(); await carregaRunB(); desaHash(); };
+
+// ---------- Cançó ----------
+const ORIGENS = { banc: "banc", web: "web", local: "cache local", fitxer: "fitxer" };
+async function obreCanco(clauCanco, vista, refes = false) {
+  if (/^\d+$/.test(String(clauCanco))) clauCanco = `banc-${clauCanco}`;
+  const nova = clauCanco !== S.clau;
+  S.clau = clauCanco;
+  const c = S.cancons.find((x) => x.clau === clauCanco);
+  $("titol").textContent = c ? `${c.titol} — ${c.artista}` : clauCanco;
+  estat(refes ? "Recalculant la traça amb el codi actual…" : "Carregant la traça (si el codi ha canviat, es recalcula: ~5–20 s)…");
+  try {
+    const T = await obte(`/api/traca/${clauCanco}${refes ? "?refes=1" : ""}`);
+    prepara(T);
+    if (c) c.traca = true;
+    estat(`traça ${T.codi} · ${T.generat} · ${T.segons} s`);
+  } catch (e) { estat("No s'ha pogut fer la traça:\n" + e.message, true); return; }
+  const T = S.T;
+  $("titol").innerHTML = `${esc(T.titol)} — ${esc(T.artista)} <span class="origen">${ORIGENS[T.origen] || T.origen}${T.origen === "web" ? ` #${T.id}` : ""}</span>`;
+  document.title = `${T.titol} · depurador`;
+  $("bRefes").style.display = "";
+  $("avisosCanco").innerHTML = [...(T.nomes_analisi ? ["Només l'anàlisi: sense dades crues no es pot refer el postprocés (no hi ha passos intermedis)."] : []),
+    ...(T.avisos || [])].map((a) => `<div>⚠ ${esc(a)}</div>`).join("");
+  if (nova || refes) muntaReproductor();
+  S.notes = await obte(`/api/notes/${clauCanco}`).catch(() => []);
+  await carregaRunB();
+  muntaCarrils();
+  omplirSelectorsContent();
+  dibuixaFonts(); dibuixaSeccions(); dibuixaLletra(); dibuixaProblemes();
+  if (S.sel != null && S.sel < S.T.durada) { const amp = S.t1 - S.t0; S.t0 = Math.max(0, S.sel - amp / 3); S.t1 = S.t0 + amp; }
+  mostraVista(vista);
+  if (S.sel != null) mostraDetall(S.sel);
+}
+$("bRefes").onclick = () => S.clau && obreCanco(S.clau, S.vista === "llista" ? "temps" : S.vista, true);
+async function carregaRunB() {
+  S.runB = null;
+  if (S.compara && S.T?.origen === "banc") S.runB = await obte(`/api/run/${encodeURIComponent(S.compara)}/${S.T.id}`).catch(() => null);
+  if (S.T) { muntaCarrils(); omplirSelectorsContent(); }
+}
+
+// Índexs precalculats de la traça
+function prepara(T) { S.T = indexa(T); }
+/** L'anàlisi amb què es compara: la d'un altre run (banc) o la desada (web, app, fitxer). */
+const comparacio = () => (S.T?.origen === "banc" ? S.runB : S.T?.desada) || null;
+const teRef = () => !!S.T?.referencia?.content;
+function nomRef() {
+  const T = S.T;
+  if (T.origen === "banc") return "Referència (BD)";
+  return T.info?.content_huma ? "Content de la web (persona)" : "Content de la web (transcriptor)";
+}
+function indexa(T) {
+  const P = T.passos, A = T.analisi;
+  T.durada = A.source.duration_s;
+  const dif = A.beats.slice(1).map((b, i) => b.t - A.beats[i].t).sort((x, y) => x - y);
+  T.ibi = dif.length ? dif[dif.length >> 1] : 0.5;
+  T.beats = A.beats;
+  T.terres = A.beats.filter((b) => b.beat === 1).map((b) => b.t);
+  T.vores = P.probabilitats.vores;
+  T.etiquetes = P.probabilitats.etiquetes;
+  T.capo = P.tonalitat.capo;
+  T.tabs = P.fonts ? P.fonts.tabs : [];
+  T.linies = (P.final.elements || []).filter((e) => e.tipus === "linia").map((e) => ({ clau: clau(e.text), start: e.start, end: e.end }));
+  return T;
+}
+const unitatA = (t) => { const v = S.T.vores; let lo = 0, hi = v.length - 2;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (v[m] <= t) lo = m; else hi = m - 1; } return lo; };
+const segA = (segs, t) => segs?.find((s) => s.start <= t && t < s.end) || null;
+function compasA(t) {
+  const b = S.T.beats; let k = -1;
+  for (let i = 0; i < b.length && b[i].t <= t + 1e-3; i++) k = i;
+  return k >= 0 ? b[k] : null;
+}
+function nCompassos(a, b) { return S.T.terres.filter((t) => t >= a - 0.1 && t < (b ?? S.T.durada) - 0.1).length; }
+function seccionsDe(llista, nom) {
+  return (llista || []).map((s) => ({ nom: nom(s), start: s.start, end: s.end ?? S.T.durada }));
+}
+
+// ---------- Línia de temps ----------
+const ETIQ = 150; // amplada de la columna de noms
+let carrils = [];
+function muntaCarrils() {
+  const T = S.T, P = T.passos;
+  const segsFinals = P.acords_fonts.segs, comp = comparacio();
+  carrils = [
+    { id: "compas", nom: "Compassos", h: 24, dib: dibCompas },
+    { id: "crues", nom: "Pulsacions crues", h: 14, dib: dibCrues, tip: tipCrues },
+    { id: "btc", nom: "BTC per pulsació", h: 48, dib: dibBTC, tip: tipBTC },
+    { id: "audio", nom: "Acords d'àudio", h: 22, dib: (c, l) => dibSegs(c, l, P.acords_audio.segs), tip: (t) => tipSeg(P.acords_audio.segs, t) },
+    ...T.tabs.map((tab, i) => ({ id: "tab" + i, nom: `${tab.site}${tab.used ? "" : " ✗"}${tab.transport ? ` (${tab.transport > 0 ? "+" : ""}${tab.transport})` : ""}`,
+      h: 20, dib: (c, l) => dibTab(c, l, tab), tip: (t) => tipTab(tab, t) })),
+    { id: "consens", nom: "Consens (bonificació)", h: 16, dib: dibConsens, tip: tipConsens },
+    { id: "final", nom: "Acords finals", h: 26, dib: (c, l) => dibSegs(c, l, segsFinals, true), tip: (t) => tipSeg(segsFinals, t) },
+    ...(teRef() ? [{ id: "ref", nom: nomRef(), h: 22, dib: dibRef, tip: tipRef }] : []),
+    ...(comp ? [{ id: "comp", nom: `Acords: ${comp.nom}`, h: 20, dib: (c, l) => dibSegs(c, l, comp.analisi.chords), tip: (t) => tipSeg(comp.analisi.chords, t) }] : []),
+    { id: "paraules", nom: "Lletra alineada", h: 20, dib: dibParaules, tip: tipParaules },
+    { id: "asr", nom: "Whisper (cru)", h: 18, dib: dibASR, tip: tipASR },
+    { id: "secEstructura", nom: "Seccions: detectades", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(P.estructura.seccions, (s) => s.name || s.label)) },
+    { id: "secFonts", nom: "Seccions: tabs", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(P.seccions_fonts.seccions, (s) => (s.name || s.label) + (s.vot_cua != null ? ` · cua ${s.vot_cua}` : ""))) },
+    { id: "secFinal", nom: "Seccions: quadra", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(P.final.seccions, (s) => s.name)) },
+    ...(teRef() ? [{ id: "secRef", nom: "Seccions: referència", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(T.referencia.seccions, (s) => s.name)) }] : []),
+    ...(comp ? [{ id: "secComp", nom: `Seccions: ${comp.nom}`, h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(comp.analisi.sections, (s) => s.name)) }] : []),
+    { id: "notes", nom: "Notes", h: 16, dib: dibNotes },
+  ];
+  $("carrils").innerHTML = carrils.map((c) =>
+    `<label><input type="checkbox" data-c="${c.id}" ${S.carrils[c.id] === false ? "" : "checked"}> ${esc(c.nom)}</label>`).join("");
+  $("llegenda").innerHTML = "Acords finals: <b style='color:var(--bad)'>▲</b> substituït per les tabs · <b style='color:var(--ok)'>●</b> confirmat · sense marca: només àudio. " +
+    "Tabs: opacitat = pes; vora vermella = l'àudio no el permet. Referència: verda si coincideix amb l'acord final (major/menor), vermella si no; ratllada = posició aproximada. " +
+    "Seccions: en vermell les que no tenen un múltiple de 4 compassos.";
+  if (S.vista === "temps") redimensiona();
+}
+$("carrils").onchange = (e) => { const id = e.target.dataset.c; if (!id) return; S.carrils[id] = e.target.checked;
+  guarda("depura-carrils", S.carrils); redimensiona(); };
+const visibles = () => carrils.filter((c) => S.carrils[c.id] !== false);
+
+const xDe = (t, W) => ETIQ + (t - S.t0) / (S.t1 - S.t0) * (W - ETIQ);
+const tDe = (x, W) => S.t0 + (x - ETIQ) / (W - ETIQ) * (S.t1 - S.t0);
+let geo = { W: 0, H: 0, dpr: 1, files: [] };
+function redimensiona() {
+  if (!S.T) return;
+  const W = $("lt").clientWidth, dpr = window.devicePixelRatio || 1;
+  let y = 0;
+  geo.files = visibles().map((c) => { const f = { c, y, h: c.h }; y += c.h + 2; return f; });
+  geo.W = W; geo.H = y; geo.dpr = dpr;
+  for (const id of ["ltBase", "ltOver"]) {
+    const cv = $(id); cv.width = W * dpr; cv.height = y * dpr; cv.style.width = W + "px"; cv.style.height = y + "px";
+  }
+  const m = $("mini"); m.width = m.clientWidth * dpr; m.height = 26 * dpr;
+  dibuixa();
+}
+window.addEventListener("resize", () => S.vista === "temps" && redimensiona());
+
+function dibuixa() {
+  if (!S.T || S.vista !== "temps") return;
+  const cv = $("ltBase"), c = cv.getContext("2d"), { W, H, dpr } = geo;
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, W, H);
+  c.font = "11px Segoe UI, system-ui, sans-serif"; c.textBaseline = "middle";
+  // Línies de compàs de fons
+  c.strokeStyle = css("--line"); c.lineWidth = 1;
+  for (const t of S.T.terres) { if (t < S.t0 || t > S.t1) continue; const x = xDe(t, W); c.beginPath(); c.moveTo(x, 0); c.lineTo(x, H); c.stroke(); }
+  for (const f of geo.files) {
+    c.save(); c.beginPath(); c.rect(ETIQ, f.y, W - ETIQ, f.h); c.clip();
+    f.c.dib(c, { y: f.y, h: f.h, W });
+    c.restore();
+    c.fillStyle = css("--panel"); c.fillRect(0, f.y, ETIQ - 4, f.h);
+    c.fillStyle = css("--muted"); c.textAlign = "left"; c.fillText(f.c.nom, 6, f.y + f.h / 2, ETIQ - 12);
+    c.strokeStyle = css("--line"); c.beginPath(); c.moveTo(0, f.y + f.h + 1); c.lineTo(W, f.y + f.h + 1); c.stroke();
+  }
+  dibuixaMini(); dibuixaCursor(); desaHash();
+}
+function rectText(c, x0, x1, y, h, fons, text, colorText) {
+  const w = Math.max(1, x1 - x0);
+  c.fillStyle = fons; c.fillRect(x0, y + 1, w - 1, h - 2);
+  if (text && w > 14) { c.fillStyle = colorText || css("--text"); c.textAlign = "left"; c.fillText(text, Math.max(x0, ETIQ) + 3, y + h / 2, w - 5); }
+}
+function visible(a, b) { return b >= S.t0 && a <= S.t1; }
+function dibCompas(c, l) {
+  c.fillStyle = css("--muted"); c.textAlign = "left";
+  for (const b of S.T.beats) {
+    if (b.t < S.t0 - 5 || b.t > S.t1) continue;
+    const x = xDe(b.t, l.W);
+    if (b.beat === 1) { c.fillStyle = css("--text"); c.fillRect(x, l.y, 1.5, l.h); c.fillText(String(b.bar), x + 3, l.y + 8); }
+    else { c.fillStyle = css("--muted"); c.fillRect(x, l.y + l.h - 7, 1, 7); }
+  }
+  if (S.bucle) { c.fillStyle = "rgba(0,95,184,.15)"; const [a, b] = S.bucle; c.fillRect(xDe(a, l.W), l.y, xDe(b, l.W) - xDe(a, l.W), l.h); }
+}
+function dibCrues(c, l) {
+  const r = S.T.passos.ritme;
+  c.fillStyle = css("--muted");
+  for (const t of r.pulsacions_crues) { if (!visible(t, t)) continue; c.fillRect(xDe(t, l.W), l.y + 3, 1, l.h - 6); }
+  c.fillStyle = css("--text");
+  for (const t of r.inicis_compas_crus) { if (!visible(t, t)) continue; c.fillRect(xDe(t, l.W) - 1, l.y + 1, 2.5, l.h - 2); }
+  c.fillStyle = "rgba(230,120,30,.25)";
+  for (const k of r.correccions) { const a = k.inici ?? k.t, b = k.fi ?? a; if (a == null || !visible(a, b)) continue;
+    c.fillRect(xDe(a, l.W), l.y, Math.max(3, xDe(b, l.W) - xDe(a, l.W)), l.h); }
+}
+function tipCrues(t) {
+  const k = S.T.passos.ritme.correccions.find((k) => (k.inici ?? 0) - 0.3 <= t && t <= (k.fi ?? k.inici ?? 0) + 0.3);
+  return k ? `Correcció de pulsacions: <b>${esc(k.tipus)}</b> ${mmss(k.inici)}–${mmss(k.fi)}` : null;
+}
+function dibBTC(c, l) {
+  const P = S.T.passos.probabilitats, v = P.vores, fh = l.h / 3;
+  for (let u = 0; u < P.top.length; u++) {
+    if (!visible(v[u], v[u + 1])) continue;
+    const x0 = xDe(v[u], l.W), x1 = xDe(v[u + 1], l.W);
+    P.top[u].slice(0, 3).forEach(([k, p], r) => rectText(c, x0, x1, l.y + r * fh, fh, colorAcord(P.etiquetes[k], Math.min(1, 0.15 + p * 1.2)),
+      x1 - x0 > 38 ? `${P.etiquetes[k]} ${Math.round(p * 100)}` : P.etiquetes[k]));
+  }
+}
+function tipBTC(t) {
+  const P = S.T.passos.probabilitats, u = unitatA(t);
+  return `Pulsació ${u}: ` + (P.top[u] || []).map(([k, p]) => `<b>${esc(P.etiquetes[k])}</b> ${Math.round(p * 100)} %`).join(" · ");
+}
+function dibSegs(c, l, segs, finals = false) {
+  for (const s of segs || []) {
+    if (!visible(s.start, s.end)) continue;
+    const x0 = xDe(s.start, l.W), x1 = xDe(s.end, l.W);
+    rectText(c, x0, x1, l.y, l.h, colorAcord(s.label, 0.35 + 0.65 * Math.min(1, (s.conf ?? 0.7) * 1.3)), s.label);
+    if (finals && s.origen === "substituit") { c.fillStyle = css("--bad"); c.beginPath(); c.moveTo(x0 + 1, l.y + l.h); c.lineTo(x0 + 7, l.y + l.h); c.lineTo(x0 + 4, l.y + l.h - 6); c.fill(); }
+    if (finals && s.origen === "confirmat") { c.fillStyle = css("--ok"); c.beginPath(); c.arc(x1 - 5, l.y + l.h - 5, 2.5, 0, 7); c.fill(); }
+  }
+}
+function tipSeg(segs, t) {
+  const s = segA(segs, t);
+  if (!s) return null;
+  let r = `<b>${esc(s.label)}</b> ${mmss(s.start)}–${mmss(s.end)} · conf ${s.conf ?? "—"}`;
+  if (s.raw && s.raw !== s.label) r += ` · BTC: ${esc(s.raw)}`;
+  if (s.origen) r += ` · ${s.origen}` + (s.fonts != null ? ` (fonts ${s.fonts}/${s.fonts_total})` : "");
+  return r;
+}
+function dibTab(c, l, tab) {
+  if (!tab.acords) { c.fillStyle = css("--muted"); c.textAlign = "left"; c.fillText(tab.motiu || "sense alinear", ETIQ + 6, l.y + l.h / 2); return; }
+  for (const a of tab.acords) {
+    if (!visible(a.t, a.fi)) continue;
+    const x0 = xDe(a.t, l.W), x1 = xDe(a.fi, l.W);
+    const alfa = tab.used ? 0.2 + 0.8 * (a.pes ?? 0.5) : 0.25;
+    rectText(c, x0, x1, l.y, l.h, tab.used ? colorAcord(a.etiqueta, alfa) : `rgba(128,128,128,${alfa})`, a.escrit);
+    if (a.plausible != null && a.plausible < 0.5) { c.strokeStyle = css("--bad"); c.lineWidth = 1.5; c.strokeRect(x0 + 1, l.y + 1.5, x1 - x0 - 2, l.h - 3); }
+  }
+}
+function tipTab(tab, t) {
+  const a = tab.acords?.find((a) => a.t <= t && t < a.fi);
+  if (!a) return `${esc(tab.site)}: ${tab.used ? "res en aquest punt" : esc(tab.motiu || "no s'ha fet servir")}`;
+  const li = tab.linies?.[a.linia];
+  return `${esc(tab.site)}: <b>${esc(a.escrit)}</b> (${esc(a.etiqueta)}) · pes ${a.pes ?? "—"} · plausible ${a.plausible ?? "—"}` +
+    (a.heretat ? " · heretat" : "") + (li ? `<br><span class="muted">«${esc(li.text || "(línia d'acords)")}»</span>` : "");
+}
+function dibConsens(c, l) {
+  const b = S.T.passos.fonts?.bonificacio, v = S.T.vores;
+  if (!b) return;
+  const max = Math.max(1e-6, ...b.map((x) => x[0]?.[1] || 0));
+  for (let u = 0; u < b.length; u++) {
+    if (!b[u].length || !visible(v[u], v[u + 1])) continue;
+    const [k, val] = b[u][0];
+    rectText(c, xDe(v[u], l.W), xDe(v[u + 1], l.W), l.y, l.h, colorAcord(S.T.etiquetes[k], 0.2 + 0.8 * val / max), S.T.etiquetes[k]);
+  }
+}
+function tipConsens(t) {
+  const b = S.T.passos.fonts?.bonificacio;
+  if (!b) return "Sense tabs vàlides";
+  return "Bonificació: " + (b[unitatA(t)] || []).map(([k, v]) => `<b>${esc(S.T.etiquetes[k])}</b> +${v}`).join(" · ");
+}
+function refCoincideix(a, T = S.T) {
+  // Un temps de marge: l'acord pot entrar una mica abans o després de la paraula on l'escriu la BD
+  const mm = majmin(a.label), d = T.ibi;
+  return T.passos.acords_fonts.segs.some((s) => s.start < a.t + d && s.end > a.t - d && majmin(s.label) === mm);
+}
+function dibRef(c, l) {
+  const R = S.T.referencia;
+  for (let i = 0; i < R.acords.length; i++) {
+    const a = R.acords[i], b = R.acords[i + 1];
+    const fi = b && b.t > a.t ? Math.min(b.t, a.t + 8) : a.t + 2;
+    if (!visible(a.t, fi)) continue;
+    const x0 = xDe(a.t, l.W), x1 = xDe(fi, l.W), ok = refCoincideix(a);
+    c.fillStyle = ok ? css("--ok-soft") : css("--bad-soft"); c.fillRect(x0, l.y + 1, x1 - x0 - 1, l.h - 2);
+    c.fillStyle = ok ? css("--ok") : css("--bad"); c.fillRect(x0, l.y + 1, 2, l.h - 2);
+    if (a.aprox) { c.setLineDash([3, 3]); c.strokeStyle = css("--muted"); c.strokeRect(x0, l.y + 1, x1 - x0 - 1, l.h - 2); c.setLineDash([]); }
+    c.fillStyle = css("--text"); c.textAlign = "left"; c.fillText(a.label, x0 + 4, l.y + l.h / 2, Math.max(10, x1 - x0 - 6));
+  }
+}
+function tipRef(t) {
+  const R = S.T.referencia;
+  let a = null; for (const x of R.acords) { if (x.t <= t + 0.01) a = x; else break; }
+  if (!a) return null;
+  const s = segA(S.T.passos.acords_fonts.segs, a.t + 0.05);
+  return `BD: <b>${esc(a.label)}</b> (escrit ${esc(a.escrit)}, transport ${R.transport}${R.capo ? `, capo ${R.capo}` : ""})` +
+    (a.aprox ? " · posició aproximada" : "") + ` · final: ${esc(s?.label || "—")}`;
+}
+function dibParaules(c, l) {
+  const L = S.T.passos.lletra, w = L.paraules;
+  L.linies.forEach(([a, b], i) => {
+    for (let k = a; k < b; k++) { const p = w[k]; if (!p || !visible(p.start, p.end)) continue;
+      rectText(c, xDe(p.start, l.W), xDe(p.end, l.W), l.y, l.h, i % 2 ? "rgba(21,128,61,.18)" : "rgba(21,128,61,.30)", p.text); }
+  });
+}
+function tipParaules(t) {
+  const L = S.T.passos.lletra, k = L.paraules.findIndex((p) => p.start <= t && t < p.end);
+  if (k < 0) return null;
+  const li = L.linies.findIndex(([a, b]) => a <= k && k < b), p = L.paraules[k];
+  return `<b>${esc(p.text)}</b> ${mmss(p.start)}–${mmss(p.end)}${p.conf != null ? ` · conf ${p.conf}` : ""}` +
+    (li >= 0 ? `<br><span class="muted">«${esc(L.paraules.slice(...L.linies[li]).map((x) => x.text).join(" "))}»</span>` : "");
+}
+function dibASR(c, l) {
+  for (const p of S.T.passos.lletra.asr) { if (!visible(p.start, p.end)) continue;
+    rectText(c, xDe(p.start, l.W), xDe(p.end, l.W), l.y, l.h, `rgba(128,128,128,${0.15 + 0.35 * (p.conf ?? 0.5)})`, p.text, css("--muted")); }
+}
+function tipASR(t) { const p = S.T.passos.lletra.asr.find((p) => p.start <= t && t < p.end); return p ? `Whisper: <b>${esc(p.text)}</b> · conf ${p.conf ?? "—"}` : null; }
+function dibSeccions(c, l, llista) {
+  llista.forEach((s, i) => {
+    if (!visible(s.start, s.end)) return;
+    const n = nCompassos(s.start, s.end), x0 = xDe(s.start, l.W), x1 = xDe(s.end, l.W);
+    c.fillStyle = i % 2 ? "rgba(124,58,237,.13)" : "rgba(14,116,144,.15)"; c.fillRect(x0, l.y + 1, x1 - x0 - 1, l.h - 2);
+    c.fillStyle = css("--text"); c.fillRect(x0, l.y + 1, 2, l.h - 2);
+    c.fillStyle = n % 4 ? css("--bad") : css("--text"); c.textAlign = "left";
+    c.fillText(`${s.nom} · ${n}`, Math.max(x0, ETIQ) + 5, l.y + l.h / 2, Math.max(10, x1 - Math.max(x0, ETIQ) - 8));
+  });
+}
+function dibNotes(c, l) {
+  c.fillStyle = css("--accent");
+  for (const n of S.notes) { if (!visible(n.t, n.t)) continue; const x = xDe(n.t, l.W);
+    c.beginPath(); c.moveTo(x - 5, l.y + 2); c.lineTo(x + 5, l.y + 2); c.lineTo(x, l.y + l.h - 2); c.fill(); }
+}
+
+function dibuixaCursor() {
+  const cv = $("ltOver"), c = cv.getContext("2d"), { W, H, dpr } = geo;
+  c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, W, H);
+  const t = tAra();
+  if (t >= S.t0 && t <= S.t1) { c.fillStyle = css("--cursor"); c.fillRect(xDe(t, W) - 1, 0, 2, H); }
+  if (S.sel != null && S.sel >= S.t0 && S.sel <= S.t1) { c.strokeStyle = css("--sel"); c.setLineDash([4, 3]); c.beginPath();
+    c.moveTo(xDe(S.sel, W), 0); c.lineTo(xDe(S.sel, W), H); c.stroke(); c.setLineDash([]); }
+  if (arrossega?.bucle) { const [a, b] = [arrossega.ta, arrossega.tb].sort((x, y) => x - y);
+    c.fillStyle = "rgba(0,95,184,.12)"; c.fillRect(xDe(a, W), 0, xDe(b, W) - xDe(a, W), H); }
+}
+function dibuixaMini() {
+  const m = $("mini"), c = m.getContext("2d"), dpr = geo.dpr, W = m.width / dpr, D = S.T.durada;
+  c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, W, 26);
+  c.fillStyle = css("--panel"); c.fillRect(0, 0, W, 26);
+  (S.T.passos.final.seccions || []).forEach((s, i) => { c.fillStyle = i % 2 ? "rgba(124,58,237,.25)" : "rgba(14,116,144,.25)";
+    c.fillRect(s.start / D * W, 0, (s.end - s.start) / D * W, 26); c.fillStyle = css("--text"); c.font = "10px system-ui";
+    c.textBaseline = "middle"; c.fillText(s.name, s.start / D * W + 3, 13, (s.end - s.start) / D * W - 4); });
+  c.strokeStyle = css("--accent"); c.lineWidth = 2; c.strokeRect(S.t0 / D * W, 1, (S.t1 - S.t0) / D * W, 24);
+  c.fillStyle = css("--cursor"); c.fillRect(tAra() / D * W, 0, 1.5, 26);
+}
+$("mini").onclick = (e) => { const r = $("mini").getBoundingClientRect(), t = (e.clientX - r.left) / r.width * S.T.durada;
+  const amp = S.t1 - S.t0; S.t0 = Math.max(0, t - amp / 2); S.t1 = S.t0 + amp; dibuixa(); };
+
+// Interacció
+let arrossega = null;
+const over = $("ltOver");
+over.addEventListener("mousedown", (e) => {
+  const r = over.getBoundingClientRect(), x = e.clientX - r.left;
+  if (x < ETIQ) return;
+  const t = tDe(x, geo.W);
+  arrossega = { x0: e.clientX, t0: S.t0, t1: S.t1, mogut: false, bucle: e.shiftKey, ta: t, tb: t };
+});
+window.addEventListener("mousemove", (e) => {
+  if (arrossega) {
+    const dx = e.clientX - arrossega.x0;
+    if (Math.abs(dx) > 3) arrossega.mogut = true;
+    if (arrossega.bucle) { const r = over.getBoundingClientRect(); arrossega.tb = tDe(e.clientX - r.left, geo.W); dibuixaCursor(); return; }
+    if (arrossega.mogut) { const dt = dx / (geo.W - ETIQ) * (arrossega.t1 - arrossega.t0);
+      S.t0 = arrossega.t0 - dt; S.t1 = arrossega.t1 - dt; dibuixa(); }
+    return;
+  }
+  if (e.target !== over) { $("tip").style.display = "none"; return; }
+  const r = over.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  const f = geo.files.find((f) => y >= f.y && y < f.y + f.h + 2);
+  const html = x >= ETIQ && f?.c.tip ? f.c.tip(tDe(x, geo.W)) : null;
+  const tip = $("tip");
+  if (!html) { tip.style.display = "none"; return; }
+  tip.innerHTML = `<span class="muted">${mmss(tDe(x, geo.W))}</span> ${html}`; tip.style.display = "block";
+  tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + "px"; tip.style.top = (e.clientY + 16) + "px";
+});
+window.addEventListener("mouseup", () => {
+  if (!arrossega) return;
+  const a = arrossega; arrossega = null;
+  if (a.bucle) {
+    const [x, y] = [a.ta, a.tb].sort((p, q) => p - q);
+    S.bucle = y - x > 0.2 ? [x, y] : null; $("bBucle").classList.toggle("on", !!S.bucle);
+    if (S.bucle) salta(x);
+    dibuixa(); return;
+  }
+  if (!a.mogut) { S.sel = a.ta; salta(a.ta); mostraDetall(a.ta); dibuixaCursor(); desaHash(); }
+});
+over.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const r = over.getBoundingClientRect(), t = tDe(Math.max(ETIQ, e.clientX - r.left), geo.W), amp = S.t1 - S.t0;
+  if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+    const dt = (e.deltaX || e.deltaY) / (geo.W - ETIQ) * amp; S.t0 += dt; S.t1 += dt;
+  } else {
+    const f = Math.exp(e.deltaY * 0.0015), nova = Math.min(Math.max(amp * f, 3), S.T.durada + 10);
+    S.t0 = t - (t - S.t0) * nova / amp; S.t1 = S.t0 + nova;
+  }
+  dibuixa();
+}, { passive: false });
+over.addEventListener("mouseleave", () => { $("tip").style.display = "none"; });
+
+// ---------- Detall d'un instant ----------
+function mostraDetall(t) {
+  const T = S.T, P = T.passos, u = unitatA(t), b = compasA(t);
+  const prob = P.probabilitats.top[u] || [];
+  const aud = segA(P.acords_audio.segs, t), fin = segA(P.acords_fonts.segs, t);
+  const seccio = (llista, nom) => { const s = (llista || []).find((s) => s.start <= t && t < (s.end ?? T.durada)); return s ? nom(s) : "—"; };
+  const k = P.lletra.paraules.findIndex((p) => p.start <= t + 0.5 && t - 0.5 < p.end);
+  let ref = null; for (const x of T.referencia.acords) { if (x.t <= t + 0.05) ref = x; else break; }
+  const html = [];
+  html.push(`<h3>${mmss(t)} · compàs ${b ? b.bar : "—"}, temps ${b ? b.beat : "—"} · pulsació ${u}</h3>`);
+  html.push(`<div class="bloc"><div class="muted petit">BTC (mitjana de la pulsació)</div>` + prob.map(([k, p]) =>
+    `<div class="fila"><span class="xip" style="background:${colorAcord(P.probabilitats.etiquetes[k], .8)}">${esc(P.probabilitats.etiquetes[k])}</span>` +
+    `<span class="barra-p" style="width:${Math.round(p * 160)}px"></span><span class="petit">${Math.round(p * 100)} %</span></div>`).join("") + "</div>");
+  html.push(`<div class="bloc"><div class="fila"><span class="muted">Àudio:</span> ${aud ? `<b>${esc(aud.label)}</b> <span class="petit muted">conf ${aud.conf}</span>` : "—"}</div>` +
+    `<div class="fila"><span class="muted">Final:</span> ${fin ? `<b>${esc(fin.label)}</b> <span class="petit muted">${fin.origen || ""}${fin.fonts != null ? ` · fonts ${fin.fonts}/${fin.fonts_total}` : ""} · conf ${fin.conf}</span>` : "—"}</div>` +
+    (ref ? `<div class="fila"><span class="muted">BD:</span> <b class="${refCoincideix(ref) ? "ok" : "bad"}">${esc(ref.label)}</b> <span class="petit muted">escrit ${esc(ref.escrit)}${ref.aprox ? " · aprox." : ""}</span></div>` : "") + "</div>");
+  if (T.tabs.length) {
+    html.push(`<div class="bloc"><div class="muted petit">Tabs</div>` + T.tabs.map((tab) => {
+      const a = tab.acords?.find((a) => a.t <= t && t < a.fi);
+      const li = a ? tab.linies?.[a.linia] : null;
+      return `<div class="fila"><span class="xip">${esc(tab.site)}${tab.used ? "" : " ✗"}</span>` + (a ? `<b>${esc(a.escrit)}</b>` +
+        `<span class="petit muted">pes ${a.pes ?? "—"} · plaus. <span class="${a.plausible != null && a.plausible < .5 ? "bad" : ""}">${a.plausible ?? "—"}</span>${a.heretat ? " · heretat" : ""}</span>` +
+        (li ? `<div class="petit muted" style="width:100%">«${esc(li.text || "(línia d'acords)")}»</div>` : "") : `<span class="petit muted">—</span>`) + "</div>";
+    }).join("") + (P.fonts?.bonificacio ? `<div class="petit muted">Consens: ${(P.fonts.bonificacio[u] || []).map(([k, v]) => `${esc(T.etiquetes[k])} +${v}`).join(" · ") || "—"}</div>` : "") + "</div>");
+  }
+  html.push(`<div class="bloc"><div class="muted petit">Secció a cada pas</div>` +
+    `<div>Detectada: ${esc(seccio(P.estructura.seccions, (s) => s.name || s.label))} · Tabs: ${esc(seccio(P.seccions_fonts.seccions, (s) => s.name || s.label))}</div>` +
+    `<div>Quadra: <b>${esc(seccio(P.final.seccions, (s) => s.name))}</b> · ref.: ${esc(seccio(T.referencia.seccions, (s) => s.name))}</div></div>`);
+  if (k >= 0) html.push(`<div class="bloc"><span class="muted">Paraula:</span> «${esc(P.lletra.paraules[k].text)}»</div>`);
+  html.push(`<div class="bloc"><textarea id="nota" rows="2" placeholder="Nota en aquest instant (es desa a work/depura/notes.json)"></textarea>` +
+    `<div class="fila" style="margin-top:4px"><button id="bNota">Desa la nota</button><button id="bInforme" title="Copia aquest detall en markdown per enganxar-lo al xat">Copia informe</button></div></div>`);
+  const prop = S.notes.filter((n) => Math.abs(n.t - t) < 3);
+  if (prop.length) html.push(`<div class="bloc"><div class="muted petit">Notes a prop</div>` + prop.map((n) =>
+    `<div class="petit">${mmss(n.t)} · ${esc(n.text)} <a href="#" data-esborra="${S.notes.indexOf(n)}">esborra</a></div>`).join("") + "</div>");
+  $("detall").innerHTML = html.join("");
+  $("bNota").onclick = async () => { const text = $("nota").value.trim(); if (!text) return;
+    S.notes.push({ t: +t.toFixed(2), text, codi: T.codi }); await desaNotes(); mostraDetall(t); dibuixa(); };
+  $("bInforme").onclick = () => copiaInforme(t);
+  $("detall").querySelectorAll("[data-esborra]").forEach((a) => a.onclick = async (e) => { e.preventDefault();
+    S.notes.splice(+a.dataset.esborra, 1); await desaNotes(); mostraDetall(t); dibuixa(); });
+}
+async function desaNotes() {
+  await fetch(`/api/notes/${S.clau}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(S.notes) });
+}
+function copiaInforme(t) {
+  const T = S.T, P = T.passos, u = unitatA(t), b = compasA(t);
+  const aud = segA(P.acords_audio.segs, t), fin = segA(P.acords_fonts.segs, t);
+  const seccio = (llista, nom) => { const s = (llista || []).find((s) => s.start <= t && t < (s.end ?? T.durada)); return s ? nom(s) : "—"; };
+  let ref = null; for (const x of T.referencia.acords) { if (x.t <= t + 0.05) ref = x; else break; }
+  const l = [`**${T.id} · ${T.titol} — ${T.artista}** a ${mmss(t)} (compàs ${b?.bar}, temps ${b?.beat}) · codi ${T.codi}`,
+    `- BTC: ${(P.probabilitats.top[u] || []).slice(0, 4).map(([k, p]) => `${T.etiquetes[k]} ${Math.round(p * 100)}%`).join(", ")}`,
+    `- Àudio: ${aud?.label ?? "—"} (conf ${aud?.conf ?? "—"}) → final: ${fin?.label ?? "—"} (${fin?.origen ?? ""})`,
+    ...T.tabs.map((tab) => { const a = tab.acords?.find((a) => a.t <= t && t < a.fi);
+      return `- Tab ${tab.site}${tab.used ? "" : " (no usada)"}: ${a ? `${a.escrit} (pes ${a.pes}, plausible ${a.plausible})` : "—"}`; }),
+    `- BD: ${ref ? `${ref.label}${ref.aprox ? " (aprox.)" : ""}` : "—"}`,
+    `- Secció: detectada ${seccio(P.estructura.seccions, (s) => s.name || s.label)} · tabs ${seccio(P.seccions_fonts.seccions, (s) => s.name || s.label)} · quadra ${seccio(P.final.seccions, (s) => s.name)} · ref. ${seccio(T.referencia.seccions, (s) => s.name)}`];
+  const nota = $("nota")?.value.trim();
+  if (nota) l.push(`- Nota: ${nota}`);
+  navigator.clipboard.writeText(l.join("\n")).then(() => estat("Informe copiat al porta-retalls"));
+}
+
+// ---------- Reproductor (com tx visor: YouTube o àudio local) ----------
+let jugador = null;      // { temps(), play(), pause(), aturat(), salta(t), velocitat(r), destrueix() }
+let desplacament = 0;    // s: positiu, l'anàlisi es mostra més tard respecte de l'àudio
+const tAra = () => jugador ? jugador.temps() - desplacament : (S.sel ?? 0);
+const salta = (t) => { if (jugador) jugador.salta(Math.max(0, t + desplacament)); prog.ultimT = null; };
+const ultimFins = (arr, t, clauFn) => { let lo = 0, hi = arr.length - 1, r = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (clauFn(arr[m]) <= t) { r = m; lo = m + 1; } else hi = m - 1; } return r; };
+
+function muntaReproductor() {
+  const T = S.T, local = T.audio_local, yt = T.youtube_id;
+  const opt = $("sFontAudio").options;
+  opt[0].disabled = !yt; opt[1].disabled = !local;
+  // El banc s'ha analitzat amb l'àudio local: és el que quadra exactament. La resta, YouTube.
+  const pref = llegeix("depura-font-audio", null);
+  const tria = pref === "local" && local ? "local" : pref === "youtube" && yt ? "youtube"
+    : T.origen === "banc" && local ? "local" : yt ? "youtube" : local ? "local" : null;
+  $("sFontAudio").value = tria || "youtube";
+  if (tria === "local") usaAudio(`/audio/${S.clau}`);
+  else if (tria === "youtube") usaYouTube(yt);
+  else { if (jugador?.destrueix) jugador.destrueix(); jugador = null; $("yt").innerHTML = "";
+    $("contAudio").innerHTML = "<span class='muted petit'>Sense àudio: ni vídeo de YouTube ni fitxer local.</span>"; }
+}
+$("sFontAudio").onchange = () => { guarda("depura-font-audio", $("sFontAudio").value); const t = tAra(); muntaReproductor(); setTimeout(() => salta(t), 300); };
+function usaAudio(url) {
+  if (jugador?.destrueix) jugador.destrueix();
+  $("yt").innerHTML = "";
+  const a = document.createElement("audio");
+  a.controls = true; a.preload = "auto"; a.src = url;
+  $("contAudio").replaceChildren(a);
+  jugador = { temps: () => a.currentTime, play: () => a.play(), pause: () => a.pause(), aturat: () => a.paused,
+    salta: (t) => { a.currentTime = Math.max(0, t); }, velocitat: (r) => { a.playbackRate = r; },
+    destrueix: () => { a.pause(); a.remove(); } };
+  a.playbackRate = +$("sVel").value;
+  if (S.sel) a.addEventListener("loadedmetadata", () => { a.currentTime = S.sel + desplacament; }, { once: true });
+}
+/** Temps continu a partir de les lectures de YouTube, que avancen a salts (el Smoother del canconer). */
+function suavitzador() {
+  let base = 0, baseRellotge = 0, ultima = NaN, correccio = 0;
+  return {
+    reinicia() { ultima = NaN; correccio = 0; },
+    llegeix(r, sonant, rate) {
+      const ara = performance.now();
+      const est = sonant ? base + (ara - baseRellotge) / 1000 * rate * (1 + correccio) : base;
+      if (r === ultima) return est;
+      const primera = Number.isNaN(ultima), err = r - est;
+      ultima = r; baseRellotge = ara;
+      if (primera || !sonant || Math.abs(err) > 0.4) { base = r; correccio = 0; }
+      else { base = est; correccio = Math.min(Math.max(err / rate, -0.08), 0.08); }
+      return base;
+    },
+  };
+}
+const YT_ERRORS_INCRUSTAT = new Set([100, 101, 150, 153]);
+function usaYouTube(id) {
+  if (jugador?.destrueix) jugador.destrueix();
+  $("contAudio").replaceChildren();
+  const muntatge = document.createElement("div");
+  $("yt").replaceChildren(muntatge);
+  const crea = () => {
+    let estatYT = -1, rate = +$("sVel").value, ultim = 0;
+    const suau = suavitzador();
+    const p = new YT.Player(muntatge, { host: "https://www.youtube-nocookie.com", videoId: id, width: "100%", height: "100%",
+      playerVars: { rel: 0, playsinline: 1, modestbranding: 1, iv_load_policy: 3 },
+      events: {
+        onReady: () => { p.setPlaybackRate(rate); if (S.sel) p.seekTo(S.sel + desplacament, true); },
+        onStateChange: (e) => { estatYT = e.data; suau.reinicia(); },
+        onPlaybackRateChange: (e) => { rate = e.data; $("sVel").value = String(rate); suau.reinicia(); },
+        onError: (e) => {
+          if (S.T.audio_local) { $("sFontAudio").value = "local"; usaAudio(`/audio/${S.clau}`); return; }
+          $("contAudio").innerHTML = `<span class="bad petit">${YT_ERRORS_INCRUSTAT.has(e.data)
+            ? "Aquest vídeo no es pot reproduir fora de YouTube i no hi ha àudio local."
+            : `YouTube no ha pogut reproduir el vídeo (error ${e.data}).`}</span>`;
+        },
+      } });
+    jugador = {
+      temps: () => { try { ultim = suau.llegeix(p.getCurrentTime() || 0, estatYT === 1, rate); } catch (e) { /* encara no respon */ } return ultim; },
+      play: () => p.playVideo(), pause: () => p.pauseVideo(), aturat: () => estatYT !== 1,
+      salta: (t) => { p.seekTo(Math.max(0, t), true); ultim = Math.max(0, t); suau.reinicia(); },
+      velocitat: (r) => p.setPlaybackRate(r),
+      destrueix: () => { try { p.destroy(); } catch (e) { /* res */ } } };
+  };
+  if (window.YT && YT.Player) crea();
+  else { window.onYouTubeIframeAPIReady = crea;
+    if (!document.querySelector("script[src*='youtube.com/iframe_api']")) {
+      const sc = document.createElement("script"); sc.src = "https://www.youtube.com/iframe_api"; document.head.append(sc); } }
+}
+
+// Sons: clic de pulsació i acords, programats amb antelació (com el visor)
+let ctx = null;
+const so = { clic: false, acords: false, programats: [] };
+function ctxAudio() { if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)(); if (ctx.state === "suspended") ctx.resume(); return ctx; }
+function clic(quan, fort) {
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.frequency.value = fort ? 1760 : 1100;
+  g.gain.setValueAtTime(fort ? 0.5 : 0.28, quan); g.gain.exponentialRampToValueAtTime(0.001, quan + 0.05);
+  o.connect(g).connect(ctx.destination); o.start(quan); o.stop(quan + 0.06); so.programats.push(o);
+}
+const QUALITATS = [["m7b5", [0, 3, 6, 10]], ["maj7", [0, 4, 7, 11]], ["dim7", [0, 3, 6, 9]], ["dim", [0, 3, 6]],
+  ["aug", [0, 4, 8]], ["sus2", [0, 2, 7]], ["sus4", [0, 5, 7]], ["m7", [0, 3, 7, 10]], ["m6", [0, 3, 7, 9]],
+  ["m", [0, 3, 7]], ["7", [0, 4, 7, 10]], ["6", [0, 4, 7, 9]], ["", [0, 4, 7]]];
+function sonaAcord(quan, label, durada) {
+  const a = arrel(label); if (!a) return;
+  const q = (QUALITATS.find(([k]) => a.resta.split("/")[0].startsWith(k)) || ["", [0, 4, 7]])[1];
+  const fs = [40 + ((a.pc - 4 + 12) % 12), ...q.map((iv) => 52 + ((a.pc + iv - 4 + 12) % 12))].map((n) => 440 * 2 ** ((n - 69) / 12));
+  const d = Math.min(Math.max(durada, 0.4), 2.5);
+  fs.forEach((f, i) => {
+    const o = ctx.createOscillator(), g = ctx.createGain(), t0 = quan + i * 0.018;
+    o.type = "triangle"; o.frequency.value = f;
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(i === 0 ? 0.16 : 0.09, t0 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + d);
+    o.connect(g).connect(ctx.destination); o.start(t0); o.stop(t0 + d + 0.05); so.programats.push(o);
+  });
+}
+const prog = { beat: 0, acord: 0, ultimT: null, ultimRellotge: 0 };
+function reiniciaProgramacio(t) {
+  so.programats.forEach((o) => { try { o.stop(); } catch (e) { /* ja aturat */ } }); so.programats = [];
+  prog.beat = ultimFins(S.T.beats, t, (b) => b.t) + 1;
+  prog.acord = ultimFins(S.T.passos.acords_fonts.segs, t, (c) => c.start) + 1;
+}
+function programaSo(t, sonant) {
+  const ara = performance.now(), rate = +$("sVel").value, acords = S.T.passos.acords_fonts.segs, beats = S.T.beats;
+  if (prog.ultimT !== null) {
+    const esperat = prog.ultimT + (sonant ? (ara - prog.ultimRellotge) / 1000 * rate : 0);
+    if (Math.abs(t - esperat) > 0.25) reiniciaProgramacio(t);
+  } else reiniciaProgramacio(t);
+  prog.ultimT = t; prog.ultimRellotge = ara;
+  if (!sonant || !(so.clic || so.acords) || !ctx) { if (!sonant) prog.ultimT = null; return; }
+  const finestra = 0.15 * rate;
+  while (prog.beat < beats.length && beats[prog.beat].t < t + finestra) {
+    const b = beats[prog.beat++];
+    if (so.clic && b.t >= t - 0.02) clic(ctx.currentTime + Math.max(0, (b.t - t) / rate), b.beat === 1);
+  }
+  while (prog.acord < acords.length && acords[prog.acord].start < t + finestra) {
+    const c = acords[prog.acord++];
+    if (so.acords && c.start >= t - 0.02) sonaAcord(ctx.currentTime + Math.max(0, (c.start - t) / rate), c.label, (c.end - c.start) / rate);
+  }
+}
+function commuta(k, boto) { so[k] = !so[k]; boto.classList.toggle("on", so[k]); ctxAudio(); prog.ultimT = null; }
+$("bClic").onclick = () => commuta("clic", $("bClic"));
+$("bAcords").onclick = () => commuta("acords", $("bAcords"));
+function playPausa() { if (!jugador) return; ctxAudio(); jugador.aturat() ? jugador.play() : jugador.pause(); }
+$("bPlay").onclick = playPausa;
+$("sVel").onchange = () => jugador && jugador.velocitat(+$("sVel").value);
+$("nDespl").oninput = (e) => { desplacament = (+e.target.value || 0) / 1000; prog.ultimT = null; };
+
+// En directe (com el visor): compàs, acord, secció i línia que sonen
+const viu = { linia: null, paraula: null };
+function actualitzaViu(t) {
+  const T = S.T, P = T.passos, ib = ultimFins(T.beats, t, (b) => b.t);
+  $("vCompas").textContent = ib >= 0 ? `${T.beats[ib].bar}.${T.beats[ib].beat}` : "—";
+  const segs = P.acords_fonts.segs, ia = ultimFins(segs, t, (c) => c.start);
+  const ac = ia >= 0 && t < segs[ia].end ? segs[ia] : null, seg = segs[ia + 1];
+  $("vAcord").textContent = ac ? ac.label : "—";
+  $("vSeguent").textContent = seg ? `→ ${seg.label} (${(seg.start - t).toFixed(1)} s)` : "";
+  const sec = (P.final.seccions || []).find((s) => s.start <= t && t < s.end);
+  $("vSeccio").textContent = sec ? sec.name : "—";
+  const L = P.lletra, w = L.paraules, iw = ultimFins(w, t, (p) => p.start);
+  let li = L.linies.findIndex(([a, b]) => w[a] && w[b - 1] && t >= w[a].start - 0.3 && t < w[b - 1].end + 0.6);
+  if (li < 0) li = L.linies.findIndex(([a]) => w[a] && w[a].start > t) - 1;
+  if (li !== viu.linia) {
+    viu.linia = li; viu.paraula = null;
+    const [a, b] = L.linies[li] || [0, 0];
+    $("vLinia").innerHTML = li >= 0 ? w.slice(a, b).map((p, k) => `<span data-w="${a + k}">${esc(p.text)}</span>`).join(" ") : "";
+    const [c, d] = L.linies[li + 1] || [0, 0];
+    $("vLiniaSeg").textContent = w.slice(c, d).map((p) => p.text).join(" ");
+  }
+  const actiu = iw >= 0 && t < w[iw].end + 0.15 ? iw : null;
+  if (actiu !== viu.paraula) {
+    $("vLinia").querySelector(".ara")?.classList.remove("ara");
+    if (actiu != null) $("vLinia").querySelector(`[data-w="${actiu}"]`)?.classList.add("ara");
+    viu.paraula = actiu;
+  }
+}
+
+function bucleReproductor() {
+  if (S.T && jugador) {
+    const t = tAra(), sonant = !jugador.aturat();
+    if (S.bucle && sonant && t >= S.bucle[1]) salta(S.bucle[0]);
+    $("tempsAra").textContent = `${mmss(t)} / ${mmss(S.T.durada)}`;
+    $("bPlay").textContent = sonant ? "❚❚ Pausa" : "▶ Reprodueix";
+    programaSo(t, sonant);
+    actualitzaViu(t);
+    if (S.vista === "temps") {
+      const amp = S.t1 - S.t0;
+      if (sonant && (t > S.t1 - amp * 0.1 || t < S.t0)) { S.t0 = t - amp * 0.1; S.t1 = S.t0 + amp; dibuixa(); }
+      else { dibuixaCursor(); dibuixaMini(); }
+    }
+    if (S.vista === "content" && sonant) marcaLiniaContent(t);
+  }
+  requestAnimationFrame(bucleReproductor);
+}
+requestAnimationFrame(bucleReproductor);
+function saltaCompas(dir) { const t = tAra(), T = S.T.terres;
+  const k = dir > 0 ? T.findIndex((x) => x > t + 0.05) : T.findLastIndex((x) => x < t - 0.3);
+  if (k >= 0) salta(T[k]); }
+$("bAnt").onclick = () => saltaCompas(-1); $("bSeg").onclick = () => saltaCompas(1);
+$("bBucle").onclick = () => { S.bucle = null; $("bBucle").classList.remove("on"); dibuixa(); };
+document.addEventListener("keydown", (e) => {
+  if (!S.T || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || S.vista === "llista") return;
+  if (e.key === " ") { e.preventDefault(); playPausa(); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); saltaCompas(-1); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); saltaCompas(1); }
+  else if (e.key === "c" || e.key === "C") $("bClic").click();
+  else if (e.key === "a" || e.key === "A") $("bAcords").click();
+});
+
+// ---------- Content costat a costat ----------
+function fontsContent() {
+  const T = S.T, P = T.passos;
+  const capoRef = T.referencia.transport + T.capo; // referència (formes) → so
+  const comp = comparacio();
+  const f = [
+    ["ref", nomRef(), T.referencia.content, capoRef],
+    ["comp", comp?.nom, comp?.content, comp?.analisi?.capo_suggerit || 0],
+    ["sense", "Sense tabs", T.sense_fonts?.content, T.sense_fonts?.capo ?? T.capo],
+    ["estructura", "1 · Estructura detectada", T.nomes_analisi ? "" : P.estructura.content, T.capo],
+    ["seccions_fonts", "2 · Seccions de les tabs", T.nomes_analisi ? "" : P.seccions_fonts.content, T.capo],
+    ["final", T.nomes_analisi ? "Content" : "3 · Final (quadra + render)", T.content, T.capo],
+  ];
+  return f.filter(([, , c]) => c);
+}
+function omplirSelectorsContent() {
+  const f = fontsContent(), op = f.map(([k, nom]) => `<option value="${k}">${esc(nom)}</option>`).join("");
+  const a = $("sA").value || llegeix("depura-ca", "ref"), b = $("sB").value || llegeix("depura-cb", "final");
+  $("sA").innerHTML = op; $("sB").innerHTML = op;
+  const per = (k) => f.some(([x]) => x === k);
+  $("sA").value = per(a) ? a : per("ref") ? "ref" : per("comp") ? "comp" : f[0]?.[0] || "";
+  $("sB").value = per(b) ? b : per("final") ? "final" : f[f.length - 1]?.[0] || "";
+}
+$("sA").onchange = $("sB").onchange = $("cDesplega").onchange = () => { guarda("depura-ca", $("sA").value); guarda("depura-cb", $("sB").value); dibuixaContent(); };
+function alinea(A, B) {
+  // LCS sobre les claus (línies de lletra i títols de secció); la resta s'aparella entre coincidències
+  const k = (l) => l.tipus === "lletra" ? "L:" + clau(l.text) : l.tipus === "sec" ? "S:" + clau(l.text.replace(/\d+/g, "")) : null;
+  const ka = A.map(k), kb = B.map(k), n = A.length, m = B.length;
+  const d = Array.from({ length: n + 1 }, () => new Int16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+    d[i][j] = ka[i] && ka[i] === kb[j] ? d[i + 1][j + 1] + 1 : Math.max(d[i + 1][j], d[i][j + 1]);
+  const files = []; let i = 0, j = 0, pa = [], pb = [];
+  const buida = () => { for (let q = 0; q < Math.max(pa.length, pb.length); q++) files.push([pa[q] ?? null, pb[q] ?? null]); pa = []; pb = []; };
+  while (i < n || j < m) {
+    if (i < n && j < m && ka[i] && ka[i] === kb[j]) { buida(); files.push([A[i++], B[j++]]); }
+    else if (j >= m || (i < n && d[i + 1][j] >= d[i][j + 1])) pa.push(A[i++]);
+    else pb.push(B[j++]);
+  }
+  buida();
+  return files;
+}
+function marcaAcords(l, altra, so, soAltra) {
+  // Classe de cada acord de `l` comparat amb la línia aparellada `altra` (al so: major/menor)
+  if (!altra || l.tipus !== "lletra" || altra.tipus !== "lletra") return l.acords.map(() => "");
+  const perParaula = new Map(), tots = new Set();
+  for (const a of altra.acords) { const w = indexParaula(altra.text, a.pos), mm = majminSo(a.ch, soAltra);
+    if (!perParaula.has(w)) perParaula.set(w, new Set()); perParaula.get(w).add(mm); tots.add(mm); }
+  return l.acords.map((a) => { const mm = majminSo(a.ch, so), w = indexParaula(l.text, a.pos);
+    return perParaula.get(w)?.has(mm) ? "ok" : tots.has(mm) ? "mogut" : "dif"; });
+}
+function htmlLinia(l, classes) {
+  if (l.tipus === "sec") return esc(l.text);
+  // Acords a sobre del text, a la seva columna
+  let dalt = "", col = 0;
+  l.acords.forEach((a, i) => { const pos = Math.max(a.pos, col); dalt += " ".repeat(pos - col) + `<span class="ch ${classes[i] || ""}">${esc(a.ch)}</span>`; col = pos + a.ch.length + 1; dalt += " "; });
+  if (!l.text.trim()) return dalt.trimEnd();
+  return (l.acords.length ? dalt.trimEnd() + "\n" : "") + esc(l.text);
+}
+function tempsLinies(linies) {
+  // Temps de cada línia de lletra: s'aparella per text amb les línies de l'anàlisi, en ordre
+  let j = 0;
+  return linies.map((l) => { if (l.tipus !== "lletra") return null;
+    const k = S.T.linies.findIndex((x, i) => i >= j && x.clau === clau(l.text));
+    if (k < 0) return null; j = k + 1; return S.T.linies[k].start; });
+}
+function dibuixaContent() {
+  if (!S.T) return;
+  const f = Object.fromEntries(fontsContent().map(([k, , c, so]) => [k, { c, so }]));
+  const a = f[$("sA").value], b = f[$("sB").value];
+  if (!a || !b) { $("ccols").innerHTML = "<span class='muted'>No hi ha content per comparar.</span>"; return; }
+  const prep = (x) => llegeixContent($("cDesplega").checked ? desplega(x.c) : x.c);
+  const A = prep(a), B = prep(b), tA = tempsLinies(A), tB = tempsLinies(B);
+  const tDe = new Map([...A.map((l, i) => [l, tA[i]]), ...B.map((l, i) => [l, tB[i]])]);
+  const html = [];
+  for (const [la, lb] of alinea(A, B)) {
+    const cel = (l, altra, so, soAltra) => {
+      if (!l) return `<div class="ccel"></div>`;
+      const t = tDe.get(l), sol = !altra && l.tipus !== "sec";
+      return `<div class="ccel ${l.tipus === "sec" ? "sec" : ""} ${t != null ? "clic" : ""} ${sol ? "sol" : ""}" ${t != null ? `data-t="${t}"` : ""}>${htmlLinia(l, marcaAcords(l, altra, so, soAltra))}</div>`;
+    };
+    html.push(cel(la, lb, a.so, b.so) + cel(lb, la, b.so, a.so));
+  }
+  $("ccols").innerHTML = html.join("");
+}
+$("ccols").onclick = (e) => { const d = e.target.closest("[data-t]"); if (d) { salta(+d.dataset.t); S.sel = +d.dataset.t; } };
+let liniaAra = null;
+function marcaLiniaContent(t) {
+  let millor = null;
+  for (const d of $("ccols").querySelectorAll("[data-t]")) if (+d.dataset.t <= t + 0.05 && (!millor || +d.dataset.t >= +millor.dataset.t)) millor = d;
+  if (millor === liniaAra) return;
+  liniaAra?.classList.remove("ara"); millor?.classList.add("ara"); liniaAra = millor;
+}
+
+// ---------- Fonts ----------
+function dibuixaFonts() {
+  const T = S.T, tabs = T.tabs, R = T.passos.acords_fonts.resum;
+  if (!tabs.length) { $("fonts").innerHTML = `<div class="panel muted">Aquesta cançó no té tabs.</div>`; return; }
+  const cap = R ? `<div class="panel" style="margin-bottom:10px">${R.valides}/${R.trobades} tabs vàlides en ${R.grups} grups · ` +
+    `${R.confirmats} acords confirmats, <b>${R.substituits} substituïts</b>, ${R.audio} només d'àudio · ${R.afegits} afegits, ${R.trets} trets</div>` : "";
+  $("fonts").innerHTML = cap + tabs.map((tab, i) => {
+    const perIdx = new Map((tab.acords || []).map((a) => [a.idx, a]));
+    let idx = 0;
+    const linies = (tab.linies || []).map((l, li) => {
+      let dalt = "", col = 0;
+      for (const [c, escrit] of l.acords) {
+        const a = perIdx.get(idx++), pos = Math.max(c, col);
+        const cls = !a ? "" : a.plausible == null ? "p-nan" : a.plausible >= 0.5 ? "p-si" : "p-no";
+        const tit = a ? `al so: ${a.escrit} · pes ${a.pes} · plausible ${a.plausible}${a.heretat ? " · heretat" : ""}` : "no alineat";
+        dalt += " ".repeat(pos - col) + `<span class="${cls}" title="${esc(tit)}">${esc(escrit)}</span> `; col = pos + escrit.length + 1;
+      }
+      const t = (tab.acords || []).find((a) => a.linia === li)?.t;
+      const sec = l.seccio != null && (li === 0 || tab.linies[li - 1].seccio !== l.seccio || tab.linies[li - 1].repeticio !== l.repeticio)
+        ? `<span class="muted">[${esc(tab.seccions[l.seccio]?.nom)}${l.repeticio ? ` ·${l.repeticio + 1}` : ""}]</span>\n` : "";
+      return sec + `<span class="linia ${l.repeticio ? "rep" : ""}" ${t != null ? `data-t="${t}"` : ""}>${dalt && l.text ? dalt + "\n" : dalt}${esc(l.text || "")}${l.heretada ? " <span class='muted'>(acords heretats)</span>" : ""}</span>`;
+    }).join("\n");
+    return `<div class="panel tab ${tab.used ? "" : "descartada"}"><h3>${i + 1}. ${esc(tab.site)} ${tab.used ? "<span class='ok'>✓ usada</span>" : `<span class="bad">✗ ${esc(tab.motiu || "descartada")}</span>`}</h3>` +
+      `<div class="petit"><a href="${esc(tab.url)}" target="_blank" rel="noopener">${esc(tab.url)}</a></div>` +
+      `<div class="petit muted">pes ${tab.weight} · grup ${tab.group ?? "—"} · encaix ${pct(tab.fit)} · lletra aparellada ${pct(tab.matched)} · transport ${tab.transport ?? "—"} · capo ${tab.capo} · ` +
+      `valoració ${tab.rating ?? "—"} (${tab.votes ?? "—"} vots)${tab.manual ? " · manual" : ""} · ${(tab.acords || []).length} acords alineats</div>` +
+      `<pre>${linies}</pre></div>`;
+  }).join("");
+}
+$("fonts").onclick = (e) => { const d = e.target.closest("[data-t]"); if (d) { salta(+d.dataset.t); S.sel = +d.dataset.t; } };
+
+// ---------- Seccions ----------
+function dibuixaSeccions() {
+  const T = S.T, Q = T.passos.quadra;
+  const f = (x) => x == null ? "—" : (+x).toFixed(2);
+  const files = (Q?.seccions || []).map((s) => `<tr class="problema" data-t="${s.inici}"><td>${esc(s.label)}</td><td>${s.instrumental ? "sí" : ""}</td>` +
+    `<td class="n">${mmss(s.candidata)}</td><td class="n">${mmss(s.inici)}</td><td class="n">${s.compassos_candidata}</td>` +
+    `<td class="n ${s.compassos % 4 ? "bad" : ""}">${s.compassos}${s.eliminada ? " (eliminada)" : ""}</td><td class="n">${s.moda ?? "—"}</td>` +
+    `<td class="n">${mmss(s.fi_lletra)}</td><td class="n">${s.vot_cua ?? "—"}</td>` +
+    `<td class="n">${f(s.cost.llargada)}</td><td class="n">${f(s.cost.seccio)}</td><td class="n">${f(s.cost.cua)}</td><td class="n">${f(s.cost.posicio)}</td></tr>`).join("");
+  const cues = (Q?.cues || []).map((c) => `<li class="problema" data-t="${c.acords[0]?.[1] ?? c.start}">${esc(c.seccio)} (${mmss(c.start)}): ${c.acords.map((a) => esc(a[0])).join(" ")}</li>`).join("");
+  const rodes = (T.rodes || []).map((z) => `<tr><td>${esc(z.seccio)}</td><td class="n">${mmss(z.start)}–${mmss(z.end)}</td><td class="n">${z.compassos}</td>` +
+    `<td>${z.rodes.map((r) => `<span class="problema" data-t="${r.inici}">${r.P} compassos ×${r.vegades} a ${mmss(r.inici)}</span>`).join("<br>") || "—"}</td>` +
+    `<td>${z.quasi.map((r) => `<span class="problema warn" data-t="${r.inici}">${r.P} compassos ×${r.vegades} a ${mmss(r.inici)} (${pct(r.semblanca)} igual)</span>`).join("<br>") || "—"}</td></tr>`).join("");
+  $("seccions").innerHTML = `<div class="panel" style="margin-bottom:10px"><h3>Quadra: fronteres i costos</h3>` +
+    `<div class="petit muted" style="margin-bottom:6px">${Q?.unides ? `${Q.unides} seccions curtes unides abans de la DP · ` : ""}Candidata = on comença segons la lletra o l'instrumental; ` +
+    `inici = frontera triada. Cost: llargada (0 si múltiple de 4, −1 la moda), secció instrumental (+ vot de les tabs), cua (compassos sense veu al final), posició (moure / cap / −canvi d'acord).</div>` +
+    `<table><thead><tr><th>Secció</th><th>Instr.</th><th>Candidata</th><th>Inici</th><th>Comp. cand.</th><th>Compassos</th><th>Moda</th><th>Fi lletra</th><th>Vot cua</th>` +
+    `<th>Llargada</th><th>Secció</th><th>Cua</th><th>Posició</th></tr></thead><tbody>${files}</tbody></table></div>` +
+    `<div class="panel" style="margin-bottom:10px"><h3>Cues escrites al final de la línia</h3>${cues ? `<ul>${cues}</ul>` : "<span class='muted'>Cap</span>"}</div>` +
+    `<div class="panel"><h3>Rodes de les zones instrumentals</h3><table><thead><tr><th>Secció</th><th>Zona</th><th>Compassos</th><th>Rodes comprimides</th>` +
+    `<th>Quasi-rodes (≥ 75 %, no comprimides)</th></tr></thead><tbody>${rodes || "<tr><td colspan=5 class='muted'>Sense zones instrumentals amb compassos</td></tr>"}</tbody></table></div>`;
+}
+$("seccions").onclick = (e) => { const d = e.target.closest("[data-t]"); if (d) vesA(+d.dataset.t); };
+function vesA(t) { S.sel = t; salta(t); const amp = S.t1 - S.t0; S.t0 = Math.max(0, t - amp / 3); S.t1 = S.t0 + amp; mostraVista("temps"); mostraDetall(t); }
+
+// ---------- Lletra i ritme ----------
+function dibuixaLletra() {
+  const T = S.T, L = T.passos.lletra, R = T.passos.ritme;
+  const corr = (L.correccions_asr || []).map((c) => `<tr><td>${esc(c.text)}</td><td class="n">${esc(JSON.stringify(c.abans))}</td><td class="n">${esc(JSON.stringify(c.despres))}</td></tr>`).join("");
+  const baixes = L.paraules.filter((p) => p.conf != null && p.conf < 0.4);
+  const rit = (R.correccions || []).map((c) => `<tr class="problema" data-t="${c.inici ?? 0}"><td>${esc(c.tipus)}</td><td class="n">${mmss(c.inici)}</td><td class="n">${mmss(c.fi)}</td>` +
+    `<td class="petit">${esc(JSON.stringify(c.abans ?? ""))}</td><td class="petit">${esc(JSON.stringify(c.despres ?? ""))}</td></tr>`).join("");
+  $("lletra").innerHTML = `<div class="panel" style="margin-bottom:10px"><h3>Lletra</h3>` +
+    `<div>Font: <b>${esc(L.font)}</b> · aparellada amb el que canta Whisper: <b>${pct(L.aparellades)}</b> · ${L.linies.length} línies · ${L.paraules.length} paraules</div>` +
+    (L.descartades?.length ? `<div class="warn" style="margin-top:6px">Línies descartades (no es canten): ${L.descartades.map(esc).join(" / ")}</div>` : "") +
+    (baixes.length ? `<div style="margin-top:6px">Paraules amb confiança &lt; 0,4: ${baixes.map((p) => `<span class="problema xip" data-t="${p.start}">${esc(p.text)} ${mmss(p.start)}</span>`).join(" ")}</div>` : "") +
+    `</div><div class="panel" style="margin-bottom:10px"><h3>Correccions dels temps de Whisper (temps_asr)</h3>` +
+    (corr ? `<table><thead><tr><th>Paraula</th><th>Abans</th><th>Després</th></tr></thead><tbody>${corr}</tbody></table>` : "<span class='muted'>Cap</span>") + `</div>` +
+    `<div class="panel" style="margin-bottom:10px"><h3>Ritme</h3><div>${R.bpm} BPM · ${R.compas.join("/")} · desfasament ${R.desfasament} · ` +
+    `${R.pulsacions_crues.length} pulsacions de Beat This, ${T.beats.length} després de corregir</div><canvas id="tempo" style="width:100%;height:120px;margin-top:6px"></canvas>` +
+    (rit ? `<table style="margin-top:6px"><thead><tr><th>Correcció</th><th>Inici</th><th>Fi</th><th>Abans</th><th>Després</th></tr></thead><tbody>${rit}</tbody></table>` : "<div class='muted'>Sense correccions de pulsacions</div>") + `</div>`;
+  requestAnimationFrame(dibuixaTempo);
+}
+function dibuixaTempo() {
+  const cv = $("tempo"); if (!cv || !cv.clientWidth) return;
+  const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = 120, c = cv.getContext("2d");
+  cv.width = W * dpr; cv.height = H * dpr; c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const mediana = (v) => [...v].sort((a, b) => a - b)[v.length >> 1];
+  const D = S.T.durada, sèrie = (ts) => {
+    const d = ts.slice(1).map((t, i) => t - ts[i]);
+    return d.map((_, i) => [ts[i + 1], 60 / mediana(d.slice(Math.max(0, i - 3), i + 4))]).filter(([, b]) => b > 20 && b < 300);
+  };
+  const crues = sèrie(S.T.passos.ritme.pulsacions_crues), bones = sèrie(S.T.beats.map((b) => b.t));
+  const tots = [...crues, ...bones].map(([, b]) => b), lo = Math.min(...tots) - 5, hi = Math.max(...tots) + 5;
+  const y = (b) => H - 4 - (b - lo) / (hi - lo) * (H - 8);
+  for (const [s, color] of [[crues, "rgba(128,128,128,.6)"], [bones, css("--primary")]]) {
+    c.strokeStyle = color; c.lineWidth = 1.2; c.beginPath();
+    s.forEach(([t, b], i) => i ? c.lineTo(t / D * W, y(b)) : c.moveTo(t / D * W, y(b))); c.stroke();
+  }
+  c.fillStyle = css("--muted"); c.font = "11px system-ui"; c.fillText(`${hi.toFixed(0)} BPM`, 4, 12); c.fillText(`${lo.toFixed(0)} BPM`, 4, H - 6);
+  c.fillText("gris: Beat This cru · blau: corregit (mediana de 7 pulsacions)", W - 330, 12);
+}
+$("lletra").onclick = (e) => { const d = e.target.closest("[data-t]"); if (d) vesA(+d.dataset.t); };
+
+// ---------- Problemes ----------
+function detecta(T) {
+  const P = T.passos, A = T.analisi, p = [];
+  const n4 = (a, b) => T.terres.filter((t) => t >= a - 0.1 && t < b - 0.1).length;
+  const INSTR = ["intro", "instrumental", "solo", "interludi", "outro"];
+  for (const s of A.sections) { const n = n4(s.start, s.end);
+    if (n % 4) p.push(["Secció que no és múltiple de 4", s.start, `${s.name}: ${n} compassos`]);
+    if (INSTR.includes(s.label) && n < 4) p.push(["Instrumental curt", s.start, `${s.name}: ${n} compassos`]); }
+  for (const s of P.quadra?.seccions || []) if (s.eliminada) p.push(["Secció eliminada per quadra", s.candidata, `${s.label} (${s.compassos_candidata} compassos candidats)`]);
+  for (const c of P.quadra?.cues || []) p.push(["Cua escrita al final de la línia", c.acords[0]?.[1] ?? c.start, `${c.seccio}: ${c.acords.map((a) => a[0]).join(" ")}`]);
+  const fin = P.acords_fonts.segs, aud = P.acords_audio.segs;
+  for (const s of fin) {
+    if (s.conf != null && s.conf < 0.3) p.push(["Acord de confiança baixa", s.start, `${s.label} (conf ${s.conf})`]);
+    if (s.origen === "substituit") { const a = segA(aud, (s.start + s.end) / 2);
+      if (a && a.conf >= 0.55) p.push(["Substitució amb l'àudio segur", s.start, `${a.label} (conf ${a.conf}) → ${s.label}`]); }
+    if (s.origen !== "substituit") {
+      const vots = T.tabs.filter((t) => t.used).map((t) => t.acords?.find((a) => a.t <= s.start + 0.05 && s.start + 0.05 < a.fi)).filter(Boolean);
+      if (vots.length >= 1 && vots.every((a) => majmin(a.etiqueta) !== majmin(s.label)) && vots.some((a) => (a.pes ?? 0) > 0.5))
+        p.push(["L'àudio contradiu totes les tabs", s.start, `final ${s.label} · tabs: ${vots.map((a) => a.escrit).join(", ")}`]);
+    }
+  }
+  const correccio = (t) => (t.transport - (t.capo || 0) + 120) % 12; // el transport menys el capo: correcció de to
+  const usades = T.tabs.filter((t) => t.used), correccions = usades.map(correccio);
+  const majoria = [...correccions].sort((a, b) => correccions.filter((x) => x === b).length - correccions.filter((x) => x === a).length)[0];
+  for (const t of T.tabs) {
+    if (!t.used) p.push(["Tab descartada", null, `${t.site}: ${t.motiu || "—"} (encaix ${pct(t.fit)})`]);
+    else if (t.fit != null && t.fit < 0.7) p.push(["Tab amb encaix baix", null, `${t.site}: encaix ${pct(t.fit)}`]);
+    if (t.used && usades.length > 1 && correccio(t) !== majoria) p.push(["Tab en un altre to", null, `${t.site}: corregida ${correccio(t)} semitons (la majoria ${majoria})`]);
+  }
+  const L = P.lletra;
+  for (const d of L.descartades || []) p.push(["Línia de lletra descartada", null, d]);
+  if (L.aparellades != null && L.aparellades < 0.8) p.push(["Lletra poc aparellada", null, pct(L.aparellades)]);
+  for (const z of T.rodes || []) for (const r of z.quasi) p.push(["Quasi-roda no comprimida", r.inici, `${z.seccio}: ${r.P} compassos ×${r.vegades}, ${pct(r.semblanca)} igual`]);
+  for (const c of P.ritme.correccions || []) p.push(["Correcció de pulsacions", c.inici ?? 0, c.tipus]);
+  let dolentes = [];
+  for (const a of T.referencia.acords) if (!a.aprox && !refCoincideix(a, T)) dolentes.push(a);
+  for (const a of dolentes) p.push(["Acord diferent de la referència", a.t, `ref. ${a.label} · final ${segA(fin, a.t + 0.05)?.label ?? "—"}`]);
+  if (T.referencia.sense_posicio.length) p.push(["Línies de la referència sense aparellar", null, T.referencia.sense_posicio.slice(0, 6).join(" / ")]);
+  return p;
+}
+function dibuixaProblemes() {
+  const p = detecta(S.T), grups = new Map();
+  for (const x of p) { if (!grups.has(x[0])) grups.set(x[0], []); grups.get(x[0]).push(x); }
+  $("problemes").innerHTML = `<div class="panel" style="margin-bottom:10px">${p.length} avisos en ${grups.size} tipus. Fes clic a un per anar-hi a la línia de temps.</div>` +
+    [...grups].map(([tipus, xs]) => `<div class="panel grup-prob"><h3>${esc(tipus)} <span class="muted">(${xs.length})</span></h3>` +
+      xs.slice(0, 60).map(([, t, text]) => t == null ? `<div class="petit">${esc(text)}</div>` :
+        `<div class="problema petit" data-t="${t}"><span class="temps">${mmss(t)}</span> ${esc(text)}</div>`).join("") +
+      (xs.length > 60 ? `<div class="muted petit">… i ${xs.length - 60} més</div>` : "") + "</div>").join("");
+}
+$("problemes").onclick = (e) => { const d = e.target.closest("[data-t]"); if (d) vesA(+d.dataset.t); };
+
+// ---------- Problemes de tot el banc ----------
+let agregant = false;
+$("bAgregat").onclick = async () => {
+  if (agregant) { agregant = false; return; }
+  agregant = true; $("bAgregat").textContent = "Atura";
+  const cancons = S.cancons.filter((c) => c.audio), per = new Map(), perCanco = [];
+  $("agregat").style.display = "block";
+  for (const [k, c] of cancons.entries()) {
+    if (!agregant) break;
+    $("agregat").innerHTML = `<span class="muted">Llegint les traces: ${k + 1}/${cancons.length} · ${esc(c.titol)}${c.traca ? "" : " (calculant…)"}</span>` + taulaAgregat(per, perCanco);
+    try {
+      const T = indexa(await obte(`/api/traca/${c.clau}`));
+      c.traca = true;
+      const p = detecta(T), tipus = new Map();
+      for (const [t] of p) tipus.set(t, (tipus.get(t) || 0) + 1);
+      for (const [t, n] of tipus) { const x = per.get(t) || { avisos: 0, cancons: [] }; x.avisos += n; x.cancons.push([c, n]); per.set(t, x); }
+      perCanco.push([c, p.length]);
+    } catch (e) { perCanco.push([c, null]); }
+  }
+  agregant = false; $("bAgregat").textContent = "Problemes de tot el banc";
+  $("agregat").innerHTML = `<span class="muted">${perCanco.length} cançons llegides.</span>` + taulaAgregat(per, perCanco);
+  dibuixaLlista();
+};
+function taulaAgregat(per, perCanco) {
+  const files = [...per].sort((a, b) => b[1].cancons.length - a[1].cancons.length).map(([t, x]) =>
+    `<tr><td>${esc(t)}</td><td class="n">${x.cancons.length}</td><td class="n">${x.avisos}</td><td class="petit">` +
+    x.cancons.sort((a, b) => b[1] - a[1]).slice(0, 12).map(([c, n]) => `<a href="#" data-obre="${c.id}">${c.id}</a>${n > 1 ? `×${n}` : ""}`).join(" ") + "</td></tr>").join("");
+  const errors = perCanco.filter(([, n]) => n == null).map(([c]) => c.id);
+  return `<table style="margin-top:6px"><thead><tr><th>Avís</th><th style="text-align:right">Cançons</th><th style="text-align:right">Avisos</th>` +
+    `<th>Cançons amb més avisos d'aquest tipus</th></tr></thead><tbody>${files}</tbody></table>` +
+    (errors.length ? `<div class="bad petit">Sense traça (error): ${errors.join(", ")}</div>` : "");
+}
+$("agregat").onclick = (e) => { const a = e.target.closest("[data-obre]"); if (a) { e.preventDefault(); obreCanco(`banc-${a.dataset.obre}`, "problemes"); } };
+
+// ---------- Tema i inici ----------
+$("bTema").onclick = () => { const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = t; try { localStorage.setItem("depura-tema", t); } catch (e) { /* res */ }
+  if (S.T) { redimensiona(); dibuixaTempo(); } };
+
+(async function inici() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  S.runs = await obte("/api/runs");
+  S.run = h.get("run") || S.runs[0] || null;
+  S.compara = h.get("compara") || null;
+  $("sRun").innerHTML = S.runs.map((r) => `<option>${esc(r)}</option>`).join("");
+  $("sCompara").innerHTML = "<option value=''>—</option>" + S.runs.map((r) => `<option>${esc(r)}</option>`).join("");
+  $("sRun").value = S.run || ""; $("sCompara").value = S.compara || "";
+  if (h.get("z")) S.t1 = S.t0 + +h.get("z");
+  if (h.get("t")) S.sel = +h.get("t");
+  await carregaLlista();
+  mostraLlista(S.llista);
+  if (h.get("id")) await obreCanco(h.get("id"), h.get("v") || "temps");
+  else mostraVista("llista");
+})().catch((e) => estat(e.message, true));
+</script>
+</body>
+</html>

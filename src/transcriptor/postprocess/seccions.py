@@ -35,6 +35,7 @@ from collections import Counter
 import numpy as np
 
 from .. import merge
+from ..traca import net
 
 MIN_COMPASSOS = 2
 MAX_MOURE = 2
@@ -180,9 +181,30 @@ def _cua_a_la_linia(elems: list[dict], compas: float, sonant) -> list[dict]:
     return elems[:k] + [{**linia, "acords": linia["acords"] + nous}]
 
 
+def _cost_traca(i: int, s: dict, cands, fronteres, fi_idx, terres, durada, instr, fi_bar, moda,
+                cost_seccio, cost_pos) -> dict:
+    """Per al depurador: candidata, frontera triada i cost desglossat d'una secció."""
+    def temps(j: int) -> float:
+        return terres[j] if j < len(terres) else durada
+
+    n = len(fronteres)
+    a, b = fronteres[i], fronteres[i + 1] if i + 1 < n else fi_idx
+    llarg = b - a
+    c_llarg = _cost_llargada(llarg, moda.get(s["label"])) if llarg else 0.0
+    c_seccio = COST_SECCIO.get(s["label"], COST_SECCIO_DEFECTE) + BO_FONTS * s.get("vot_cua", 0.0) \
+        if llarg and instr[i] and i > 0 else 0.0
+    return {"label": s["label"], "instrumental": instr[i], "candidata": temps(cands[i]), "inici": temps(a),
+            "fi": temps(b), "compassos": llarg, "compassos_candidata": (cands[i + 1] if i + 1 < n else fi_idx) - cands[i],
+            "fi_lletra": temps(fi_bar[i]) if fi_bar[i] is not None else None, "vot_cua": s.get("vot_cua"),
+            "eliminada": llarg == 0, "moda": moda.get(s["label"]),
+            "cost": {"llargada": c_llarg, "seccio": c_seccio, "cua": cost_seccio(i, a, b) - c_llarg - c_seccio,
+                     "posicio": cost_pos(i, a) if i else 0.0}}
+
+
 def quadra(elements: list[dict], seccions: list[dict], beats: list[dict], acords: list[dict],
-           durada: float) -> tuple[list[dict], list[dict]]:
-    """Retorna (elements, seccions) nous amb les seccions quadrades. `acords`: segments d'acord."""
+           durada: float, traca=None) -> tuple[list[dict], list[dict]]:
+    """Retorna (elements, seccions) nous amb les seccions quadrades. `acords`: segments d'acord.
+    `traca` (traca.Traca, opcional): hi desa les fronteres i el cost de cada secció, per al depurador."""
     terres = [b["t"] for b in beats if b["beat"] == 1]
     if len(terres) < 2 or not seccions:
         return elements, seccions
@@ -199,6 +221,7 @@ def quadra(elements: list[dict], seccions: list[dict], beats: list[dict], acords
         return acords[k]["label"] if k >= 0 else None
 
     seccions = [dict(s, elements=list(s["elements"])) for s in seccions]
+    n_entrada = len(seccions)
     t_fi = max(e["end"] for e in elements)
     fi_idx = bisect.bisect_left(terres, t_fi - tol)
     cands = [_candidata(s, elements, terres, tol, compas / 2) for s in seccions]
@@ -271,6 +294,10 @@ def quadra(elements: list[dict], seccions: list[dict], beats: list[dict], acords
         fronteres = _fronteres(opcions, cost_seccio, cost_pos, minim, fi_idx) or fronteres
     if fronteres is None or any(b < a or (b == a and minim[i]) for i, (a, b) in enumerate(zip(fronteres, fronteres[1:]))):
         fronteres = cands
+    if traca is not None:
+        traca.pas("quadra", unides=n_entrada - n, cues=[], seccions=[
+            _cost_traca(i, seccions[i], cands, fronteres, fi_idx, terres, durada, instr, fi_bar, moda,
+                        cost_seccio, cost_pos) for i in range(n)])
     # Les seccions buides desapareixen: els seus elements es reparteixen per temps
     fins_idx = fronteres[1:] + [fi_idx]
     vius = [i for i in range(n) if fins_idx[i] > fronteres[i] or not instr[i]]
@@ -342,6 +369,11 @@ def quadra(elements: list[dict], seccions: list[dict], beats: list[dict], acords
 
     for si, elems in enumerate(per_seccio):
         per_seccio[si] = _cua_a_la_linia(elems, compas, sonant)
+        if traca is not None and len(per_seccio[si]) < len(elems):
+            linia = per_seccio[si][-1]
+            nous = linia["acords"][len(elems[len(per_seccio[si]) - 1]["acords"]):]
+            traca.passos["quadra"]["cues"].append(net({"seccio": seccions[si]["label"], "start": inicis[si],
+                                                       "acords": [[a[1], a[2]] for a in nous]}))
 
     nous_elements: list[dict] = []
     noves: list[dict] = []

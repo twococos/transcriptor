@@ -26,7 +26,7 @@ import numpy as np
 from transcriptor import __version__
 from transcriptor.cache import Cache
 from transcriptor.config import Config
-from transcriptor.paquet import Crues
+from transcriptor.paquet import Crues, de_cache
 from transcriptor.pipeline import Entrada, executa
 from transcriptor.postprocess import temps_asr
 
@@ -39,28 +39,13 @@ def _mmss(t: float) -> str:
     return f"{int(t // 60)}:{t % 60:04.1f}"
 
 
-def _llegeix(cache: Path, nom: str) -> dict:
-    return json.loads((cache / nom).read_text(encoding="utf-8"))
-
-
 def _crues(cache: Path, durada: float | None, sense_lletra: bool) -> Crues:
     """Les dades crues tal com són a la cache (sense comprovar-ne els paràmetres)."""
-    ritme = _llegeix(cache, "rhythm.json")
-    asr = _llegeix(cache, "lyrics_asr.json")
-    params_asr = _llegeix(cache, "lyrics_asr.params.json")
-    acords = np.load(cache / "chords.npz")
-    groove = None
-    if (cache / "groove_env.npz").exists():
-        g = np.load(cache / "groove_env.npz")
-        groove = {"env": g["env"], "planor": float(g["planor"])}
-    lletra = {"text": None, "font": "whisper"} if sense_lletra or not (cache / "lyrics_source.json").exists() \
-        else _llegeix(cache, "lyrics_source.json")
-    if durada is None:
-        durada = max([ritme["pulsacions"][-1]] + [p["end"] for p in asr["paraules"]]) + 1.0
-    return Crues(meta=_llegeix(cache, "fetch.json"), durada=durada, ritme=ritme, probs=acords["probs"],
-                 per_trama=float(acords["per_trama"]), asr=asr, idioma_asr=params_asr.get("idioma"),
-                 lletra=lletra, groove=groove, separador=params_asr.get("veu", "htdemucs"),
-                 compute_type=params_asr.get("compute_type", "int8"), versio=__version__)
+    c = de_cache(cache, durada, __version__)
+    if sense_lletra or c.lletra is None:
+        c.lletra = {"text": None, "font": "whisper"}
+    c.fonts = None  # com abans: les tabs es tornen a buscar si cal (cache.json)
+    return c
 
 
 def _linies(res) -> list[tuple[str, float, float]]:

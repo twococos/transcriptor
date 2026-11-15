@@ -107,3 +107,51 @@ def trossos(pulsacions: list[list]) -> list[Tros]:
     cs = compassos(pulsacions)
     sig, abans = signatures(cs)
     return _trossos(cs, sig, abans)
+
+
+def _sonen(cs: list[Compas]) -> list[tuple]:
+    """Per a cada compàs, la classe major/menor que sona a cada temps."""
+    sonant, sortida = None, []
+    for c in cs:
+        temps = []
+        for _, _, et in c:
+            sonant = et or sonant
+            temps.append(_classe(sonant) if sonant else None)
+        sortida.append(tuple(temps))
+    return sortida
+
+
+def _semblanca(a: list[tuple], b: list[tuple]) -> float:
+    x = [t for c in a for t in c]
+    y = [t for c in b for t in c]
+    return sum(p == q for p, q in zip(x, y)) / max(len(x), len(y), 1)
+
+
+def quasi_rodes(pulsacions: list[list], llindar: float = 0.75) -> list[dict]:
+    """Rodes que es repeteixen gairebé iguals (≥ `llindar` dels temps) però no exactament, i per això
+    no es comprimeixen. Només per al depurador: [{inici, fi, P, vegades, semblanca}]."""
+    cs = compassos(pulsacions)
+    sonen = _sonen(cs)
+    candidates = []
+    for P in LONGITUDS:
+        for i in range(len(cs) - MIN_VEGADES * P + 1):
+            patro = sonen[i:i + P]
+            if len({t for c in patro for t in c if t}) < 2:
+                continue
+            k, minima = 1, 1.0
+            while i + (k + 1) * P <= len(cs):
+                s = _semblanca(patro, sonen[i + k * P:i + (k + 1) * P])
+                if s < llindar:
+                    break
+                k, minima = k + 1, min(minima, s)
+            if k >= MIN_VEGADES and minima < 1.0:
+                candidates.append((k * P, -i, -P, i, P, k, minima))
+    triades, ocupat = [], set()
+    for _, _, _, i, P, k, minima in sorted(candidates, reverse=True):
+        rang = set(range(i, i + k * P))
+        if rang & ocupat:
+            continue
+        ocupat |= rang
+        fi = cs[i + k * P][0][0] if i + k * P < len(cs) else cs[-1][-1][0]
+        triades.append({"inici": cs[i][0][0], "fi": fi, "P": P, "vegades": k, "semblanca": round(minima, 3)})
+    return sorted(triades, key=lambda r: r["inici"])

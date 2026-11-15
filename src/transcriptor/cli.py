@@ -4,6 +4,7 @@
     tx bench [--n 20] [--ids 110,111] [--config configs/x.yaml]
     tx worker --api https://guitarreo.cat --token ... [--device auto]
     tx visor <analysis.json|directori> [--audio fitxer]
+    tx depura [analysis.json|clau] [--token tx_...]
 """
 
 from __future__ import annotations
@@ -80,6 +81,12 @@ def _visor(args) -> int:
     return serveix(args.cami, audio=args.audio, port=args.port, obre=not args.no_obris)
 
 
+def _depura(args) -> int:
+    from .depura import serveix
+
+    return serveix(args.port, not args.no_obris, args.que, args.api, args.token)
+
+
 def main(argv: list[str] | None = None) -> int:
     from .app.windows import sense_dialegs_d_error
 
@@ -146,6 +153,15 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--port", type=int, default=8765, help="0 = qualsevol port lliure")
     v.add_argument("--no-obris", action="store_true", help="No obre el navegador")
     v.set_defaults(func=_visor)
+
+    d = sub.add_parser("depura", help="Depurador i visor: cada pas del postprocés de qualsevol cançó, al navegador")
+    d.add_argument("que", nargs="?", help="Per obrir de seguida: analysis.json (o el seu directori), o una clau "
+                   "(100 o banc-100, web-<id de la cançó>, local-w-<cache>)")
+    d.add_argument("--api", help="URL del canconer (per defecte, la de l'app o https://guitarreo.cat)")
+    d.add_argument("--token", help="Token d'un worker, per a les cançons de la web (per defecte, el de l'app)")
+    d.add_argument("--port", type=int, default=8766, help="0 = qualsevol port lliure")
+    d.add_argument("--no-obris", action="store_true", help="No obre el navegador")
+    d.set_defaults(func=_depura)
 
     args = p.parse_args(argv)
     _configura_logs(args.verbos)

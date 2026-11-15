@@ -31,6 +31,41 @@ def troba_audio(analisi: dict) -> Path | None:
     return None
 
 
+def envia_audio(h: BaseHTTPRequestHandler, audio: Path) -> None:
+    """Respon amb el fitxer d'àudio. Range és imprescindible: sense, el navegador no deixa saltar."""
+    mida = audio.stat().st_size
+    inici, fi = 0, mida - 1
+    m = re.match(r"bytes=(\d*)-(\d*)", h.headers.get("Range", ""))
+    if m:
+        if m.group(1):
+            inici = int(m.group(1))
+            fi = int(m.group(2)) if m.group(2) else fi
+        elif m.group(2):
+            inici = mida - int(m.group(2))
+        fi = min(fi, mida - 1)
+    h.send_response(206 if m else 200)
+    h.send_header("Content-Type", mimetypes.guess_type(audio.name)[0] or "application/octet-stream")
+    h.send_header("Accept-Ranges", "bytes")
+    h.send_header("Content-Length", str(fi - inici + 1))
+    if m:
+        h.send_header("Content-Range", f"bytes {inici}-{fi}/{mida}")
+    h.end_headers()
+    if h.command == "HEAD":
+        return
+    with audio.open("rb") as f:
+        f.seek(inici)
+        resta = fi - inici + 1
+        while resta > 0:
+            bloc = f.read(min(1 << 16, resta))
+            if not bloc:
+                break
+            try:
+                h.wfile.write(bloc)
+            except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+                return  # el navegador talla la petició quan salta
+            resta -= len(bloc)
+
+
 def _handler(json_path: Path, audio: Path | None, explicit: bool):
     class H(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):  # sense soroll a la consola
@@ -43,40 +78,6 @@ def _handler(json_path: Path, audio: Path | None, explicit: bool):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(dades)
-
-        def _audio(self) -> None:
-            # Range és imprescindible: sense, el navegador no deixa saltar enrere/endavant
-            mida = audio.stat().st_size
-            inici, fi = 0, mida - 1
-            m = re.match(r"bytes=(\d*)-(\d*)", self.headers.get("Range", ""))
-            if m:
-                if m.group(1):
-                    inici = int(m.group(1))
-                    fi = int(m.group(2)) if m.group(2) else fi
-                elif m.group(2):
-                    inici = mida - int(m.group(2))
-                fi = min(fi, mida - 1)
-            self.send_response(206 if m else 200)
-            self.send_header("Content-Type", mimetypes.guess_type(audio.name)[0] or "application/octet-stream")
-            self.send_header("Accept-Ranges", "bytes")
-            self.send_header("Content-Length", str(fi - inici + 1))
-            if m:
-                self.send_header("Content-Range", f"bytes {inici}-{fi}/{mida}")
-            self.end_headers()
-            if self.command == "HEAD":
-                return
-            with audio.open("rb") as f:
-                f.seek(inici)
-                resta = fi - inici + 1
-                while resta > 0:
-                    bloc = f.read(min(1 << 16, resta))
-                    if not bloc:
-                        break
-                    try:
-                        self.wfile.write(bloc)
-                    except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
-                        return  # el navegador talla la petició quan salta
-                    resta -= len(bloc)
 
         def do_HEAD(self):
             self.do_GET()
@@ -91,7 +92,7 @@ def _handler(json_path: Path, audio: Path | None, explicit: bool):
                 info = {"audio": audio.name if audio else None, "prefereix_audio": explicit, "json": str(json_path)}
                 self._envia(json.dumps(info, ensure_ascii=False).encode("utf-8"), "application/json")
             elif ruta == "/audio" and audio:
-                self._audio()
+                envia_audio(self, audio)
             else:
                 self.send_error(404)
 

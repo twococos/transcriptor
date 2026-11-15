@@ -19,6 +19,7 @@ from __future__ import annotations
 import io
 import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -79,3 +80,39 @@ def desempaqueta(contingut: bytes) -> Crues:
                  per_trama=dades["per_trama"], asr=dades["asr"], idioma_asr=dades["idioma_asr"],
                  lletra=dades["lletra"], groove=groove, separador=dades["separador"],
                  compute_type=dades["compute_type"], versio=dades["versio"], fonts=dades.get("fonts"))
+
+
+def _llegeix(d: Path, nom: str) -> dict | list:
+    return json.loads((d / nom).read_text(encoding="utf-8"))
+
+
+def de_cache(d: Path, durada: float | None = None, versio: str = "") -> Crues:
+    """Les dades crues tal com són al directori d'una cache local (cache.py), sense comprovar-ne els
+    paràmetres: per refer el postprocés d'una cançó ja feta (tools/revisa_*.py, depura/).
+
+    Cal que hi siguin `rhythm.json`, `chords.npz`, `lyrics_asr.json` i `fetch.json`. Sense `durada`,
+    la de `audio.wav` si encara hi és o, si no, l'última pulsació o paraula més un segon."""
+    ritme = _llegeix(d, "rhythm.json")
+    asr = _llegeix(d, "lyrics_asr.json")
+    params_asr = _llegeix(d, "lyrics_asr.params.json") if (d / "lyrics_asr.params.json").exists() else {}
+    acords = np.load(d / "chords.npz")
+    groove = None
+    if (d / "groove_env.npz").exists():
+        g = np.load(d / "groove_env.npz")
+        groove = {"env": g["env"], "planor": float(g["planor"])}
+    lletra = _llegeix(d, "lyrics_source.json") if (d / "lyrics_source.json").exists() else None
+    fonts = None
+    if (d / "chords_source.json").exists() and (d / "chords_source.params.json").exists():
+        fonts = {"params": _llegeix(d, "chords_source.params.json"), "tabs": _llegeix(d, "chords_source.json")}
+    if durada is None and (d / "audio.wav").exists():
+        import soundfile
+
+        durada = float(soundfile.info(str(d / "audio.wav")).duration)
+    if durada is None:
+        durada = max([ritme["pulsacions"][-1] if ritme["pulsacions"] else 0.0]
+                     + [w["end"] for w in asr["paraules"]]) + 1.0
+    return Crues(meta=_llegeix(d, "fetch.json"), durada=durada, ritme=ritme, probs=acords["probs"],
+                 per_trama=float(acords["per_trama"]), asr=asr, idioma_asr=params_asr.get("idioma"),
+                 lletra=lletra, groove=groove, separador=params_asr.get("veu", "htdemucs"),
+                 compute_type=params_asr.get("compute_type", "int8"), versio=versio, fonts=fonts)
+
