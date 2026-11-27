@@ -74,8 +74,21 @@ td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowra
 tbody tr { cursor: pointer; } tbody tr:hover { background: var(--accent-soft); }
 .delta { font-size: 11px; margin-left: 3px; }
 /* Línia de temps */
-#carrils { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 8px; }
 #lt { position: relative; user-select: none; }
+#ltNoms { position: absolute; left: 0; top: 0; width: 146px; z-index: 2; }
+.nom-c { position: absolute; left: 0; width: 146px; display: flex; align-items: center; gap: 2px; padding-left: 3px;
+  font-size: 11.5px; color: var(--muted); background: var(--panel); white-space: nowrap; overflow: hidden; }
+.nom-c.fill { padding-left: 17px; }
+.nom-c.fill .txt { font-size: 11px; }
+.nom-c input { margin: 0 2px 0 0; flex: none; width: 12px; height: 12px; }
+.nom-c .plega, .nom-c .buit { flex: none; width: 14px; border: 0; background: none; padding: 0; font-size: 12px;
+  color: var(--text); line-height: 1; }
+.nom-c .plega:hover { color: var(--accent); }
+.nom-c .txt { overflow: hidden; text-overflow: ellipsis; cursor: help; }
+.nom-c.grup .txt { color: var(--text); }
+#amagades { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: 12px; }
+#amagades:empty { display: none; }
+#amagades .titolet { margin-right: 4px; }
 #lt canvas { display: block; width: 100%; }
 #ltOver { position: absolute; left: 0; top: 0; cursor: crosshair; }
 #mini { display: block; width: 100%; height: 26px; margin-bottom: 6px; cursor: pointer; border-radius: 4px; }
@@ -93,8 +106,21 @@ tbody tr { cursor: pointer; } tbody tr:hover { background: var(--accent-soft); }
 /* Content */
 .ccols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
 .cfila { display: contents; }
-.ccel { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; white-space: pre; overflow-x: auto;
-  padding: 1px 4px; border-radius: 3px; min-height: 1.3em; }
+.ccel { position: relative; font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; line-height: 18px;
+  white-space: pre; overflow-x: auto; padding: 1px 4px; border-radius: 3px; min-height: 20px; }
+.ccursor { position: absolute; width: 2px; background: var(--cursor); border-radius: 1px; pointer-events: none;
+  height: 18px; display: none; }
+.ch.ara { outline: 2px solid var(--cursor); outline-offset: 1px; border-radius: 2px; }
+.triador { display: inline-flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+.triador button { padding: 2px 8px; font-size: 12px; }
+.triador .titolet { margin-right: 2px; }
+/* Fonts: pestanyes */
+#fontsPestanyes { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 0; }
+#fontsPestanyes button { border-radius: 6px 6px 0 0; border-bottom: 0; font-size: 12.5px; }
+#fontsPestanyes button.on { background: var(--panel); border-color: var(--line); border-top: 2px solid var(--accent);
+  margin-bottom: -1px; padding-bottom: 5px; }
+#fontsPestanyes button.descartada { opacity: .65; }
+#fontsCos.panel { border-top-left-radius: 0; }
 .ccel.sec { font-family: inherit; font-weight: 600; color: var(--accent); padding-top: 8px; }
 .ccel.clic { cursor: pointer; } .ccel.clic:hover { background: var(--accent-soft); }
 .ccel.ara { background: var(--accent-soft); }
@@ -105,8 +131,8 @@ tbody tr { cursor: pointer; } tbody tr:hover { background: var(--accent-soft); }
 .ch.ok { color: var(--ok); }
 /* Fonts */
 .tab { margin-bottom: 12px; }
-.tab pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; margin: 6px 0 0; max-height: 520px;
-  overflow: auto; line-height: 1.25; }
+.tab pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; margin: 6px 0 0;
+  max-height: calc(100vh - 330px); min-height: 200px; overflow: auto; line-height: 1.25; }
 .tab .linia { cursor: pointer; } .tab .linia:hover { background: var(--accent-soft); }
 .tab .rep { opacity: .55; }
 .tab .p-si { color: var(--ok); font-weight: 600; } .tab .p-no { color: var(--bad); font-weight: 600; }
@@ -121,10 +147,11 @@ textarea { font: inherit; font-size: 13px; width: 100%; color: var(--text); back
 <body>
 <header>
   <span class="marca"><b>Transcriptor</b> · depurador</span>
-  <span class="grup"><label title="Execució del banc (mètriques i comparació)">Banc <select id="sRun"></select></label>
+  <span class="grup" id="gBanc" style="display: none"><label title="Execució del banc (mètriques i comparació)">Banc <select id="sRun"></select></label>
     <label>vs <select id="sCompara"></select></label></span>
   <span class="titol" id="titol"></span>
-  <button id="bRefes" title="Torna a calcular la traça amb el codi actual (i torna a baixar les dades, si és de la web)" style="display: none">Recalcula</button>
+  <button id="bRefes" title="Torna a calcular la traça amb el codi actual" style="display: none">Recalcula</button>
+  <button id="bReprocessa" title="Encua una actualització d'aquesta cançó al principi de la cua: el worker que la faci en pujarà la traça amb el codi de la seva versió" style="display: none">Reprocessa amb un worker</button>
   <span id="estat"></span>
   <span style="flex: 1"></span>
   <button id="bTema" title="Tema clar / fosc">◐</button>
@@ -156,20 +183,20 @@ textarea { font: inherit; font-size: 13px; width: 100%; color: var(--text); back
   </div>
 
   <section class="vista" id="vLlista">
-    <div id="subLlista"><button data-o="banc">Banc</button><button data-o="web">Web (canconer)</button><button data-o="local">Caches locals</button></div>
+    <div id="subLlista"><button data-o="banc">Banc</button><button data-o="local">Caches locals</button></div>
     <div id="lWeb" style="display: none">
       <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center">
-        <input type="text" id="qWeb" placeholder="Cerca per títol o artista al canconer" style="width: 320px">
+        <input type="text" id="qWeb" placeholder="Cerca per títol o artista" style="width: 320px">
         <span class="muted petit" id="infoWeb"></span>
       </div>
       <div class="panel" style="padding: 0; max-height: calc(100vh - 190px); overflow: auto">
-        <table id="tWeb"><thead><tr><th>id</th><th>Cançó</th><th>Versió</th><th>Dades crues</th><th>Analitzada</th><th>Traça</th></tr></thead><tbody></tbody></table>
+        <table id="tWeb"><thead><tr><th>id</th><th>Cançó</th><th>Versió</th><th>Analitzada</th><th>Traça</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
     <div id="lLocal" style="display: none">
       <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center">
         <input type="text" id="qLocal" placeholder="Filtra" style="width: 280px">
-        <span class="muted petit">Caches de <code>work/cache</code> (tx run) i de l'app (%LOCALAPPDATA%\Transcriptor\dades\cache), sense les del banc</span>
+        <span class="muted petit">Les caches d'aquest ordinador: les de l'app (el worker) i les de <code>tx run</code>, sense les del banc</span>
       </div>
       <div class="panel" style="padding: 0; max-height: calc(100vh - 190px); overflow: auto">
         <table id="tLocal"><thead><tr><th>Cançó</th><th>Lloc</th><th>Vídeo</th><th>Àudio local</th><th>Data</th></tr></thead><tbody></tbody></table>
@@ -190,29 +217,32 @@ textarea { font: inherit; font-size: 13px; width: 100%; color: var(--text); back
   </section>
 
   <section class="vista" id="vTemps">
-    <div id="carrils"></div>
     <div class="dues">
       <div>
         <canvas id="mini"></canvas>
-        <div id="lt" class="panel" style="padding: 0; overflow: hidden"><canvas id="ltBase"></canvas><canvas id="ltOver"></canvas></div>
+        <div id="lt" class="panel" style="padding: 0; overflow: hidden"><canvas id="ltBase"></canvas><canvas id="ltOver"></canvas><div id="ltNoms"></div></div>
+        <div id="amagades"></div>
         <div class="petit muted" style="margin-top: 4px" id="llegenda"></div>
       </div>
-      <div id="detall" class="panel"><span class="muted">Fes clic a la línia de temps per veure el detall d'un instant.</span></div>
+      <div id="detall" class="panel"><div id="detallViu"></div><div id="detallNotes"></div></div>
     </div>
   </section>
 
   <section class="vista" id="vContent">
+    <div style="display: flex; gap: 8px 18px; flex-wrap: wrap; align-items: center; margin-bottom: 8px">
+      <span class="triador" id="trA"></span>
+      <span class="triador" id="trB"></span>
+    </div>
     <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px">
-      <label>Esquerra <select id="sA"></select></label>
-      <label>Dreta <select id="sB"></select></label>
       <label><input type="checkbox" id="cDesplega"> desplega repeticions</label>
+      <label title="Mentre sona, el content es desplaça perquè la línia que sona quedi a la vista"><input type="checkbox" id="cSegueix" checked> segueix la reproducció</label>
       <span class="petit"><span class="ch ok">acord igual</span> · <span class="ch mogut">a una altra paraula</span> ·
         <span class="ch dif">diferent o no hi és</span> · <span class="ccel sol" style="display: inline">línia només en un costat</span></span>
     </div>
     <div class="panel"><div class="ccols" id="ccols"></div></div>
   </section>
 
-  <section class="vista" id="vFonts"><div id="fonts"></div></section>
+  <section class="vista" id="vFonts"><div id="fontsResum"></div><nav id="fontsPestanyes"></nav><div id="fontsCos" class="panel"></div></section>
   <section class="vista" id="vSeccions"><div id="seccions"></div></section>
   <section class="vista" id="vLletra"><div id="lletra"></div></section>
   <section class="vista" id="vProblemes"><div id="problemes"></div></section>
@@ -304,18 +334,27 @@ function llegeixContent(content) {
 }
 const indexParaula = (text, pos) => { const t = text.slice(0, pos + 1); return t.trim() ? Math.max(t.split(/\s+/).filter(Boolean).length - 1, 0) : 0; };
 
+// ---------- Mode ----------
+// La mateixa pàgina fa de depurador local (`tx depura`, el play de l'app) i del de l'admin del canconer
+// (public/depurador/). Al canconer, les cançons són les transcripcions de la web i la traça és la
+// que hi ha pujat el worker amb el resultat; en local, la calcula el servidor amb el codi actual.
+const WEB = location.pathname.startsWith("/depurador");
+const API = WEB ? "/api/admin/depurador" : "/api";
+
 // ---------- Estat ----------
 const S = { runs: [], run: null, compara: null, cancons: [], codi: null, clau: null, T: null, vista: "llista",
   t0: 0, t1: 30, sel: null, bucle: null, notes: [], runB: null, carrils: llegeix("depura-carrils", {}),
-  llista: llegeix("depura-llista", "banc"), web: null, locals: null };
+  plegats: llegeix("depura-plegats", {}), banc: false,
+  llista: WEB ? "web" : llegeix("depura-llista", "banc"), web: null, locals: null,
+  ca: llegeix("depura-ca", "ref"), cb: llegeix("depura-cb", "final"), fontSel: 0 };
 const VISTES = [["llista", "Llista"], ["temps", "Línia de temps"], ["content", "Content"], ["fonts", "Fonts"],
   ["seccions", "Seccions"], ["lletra", "Lletra i ritme"], ["problemes", "Problemes"]];
 
 function estat(text, error = false) { $("estat").textContent = text || ""; $("estat").className = error ? "error" : ""; }
-async function obte(url) {
-  const r = await fetch(url);
-  const d = await r.json();
-  if (!r.ok) throw new Error(d.error || r.statusText);
+async function obte(url, opcions) {
+  const r = await fetch(url, opcions);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || (r.status === 401 || r.status === 403 ? "Cal entrar com a administrador" : r.statusText));
   return d;
 }
 function desaHash() {
@@ -335,7 +374,7 @@ function mostraVista(v) {
   for (const [id] of VISTES) $("v" + id[0].toUpperCase() + id.slice(1)).classList.toggle("on", id === v);
   for (const b of $("pestanyes").children) b.classList.toggle("on", b.dataset.v === v);
   $("reproductor").style.display = v !== "llista" && S.T ? "flex" : "none";
-  if (v === "temps" && S.T) { redimensiona(); }
+  if (v === "temps" && S.T) { redimensiona(); mostraDetall(tAra()); }
   if (v === "content" && S.T) dibuixaContent();
   desaHash();
 }
@@ -388,14 +427,17 @@ for (const t of ["tLlista", "tWeb", "tLocal"])
 $("filtre").oninput = dibuixaLlista;
 
 async function carregaLlista() {
-  const d = await obte(`/api/cancons?run=${encodeURIComponent(S.run || "")}&compara=${encodeURIComponent(S.compara || "")}`);
+  if (!S.banc) return;
+  const d = await obte(`${API}/cancons?run=${encodeURIComponent(S.run || "")}&compara=${encodeURIComponent(S.compara || "")}`);
   S.cancons = d.cancons; S.codi = d.codi;
   dibuixaLlista();
 }
 
-// Web i caches locals
+// Web (al canconer) i caches locals
 function mostraLlista(o) {
-  S.llista = o; guarda("depura-llista", o);
+  if (WEB) o = "web";
+  else if (o === "banc" && !S.banc || o === "web") o = "local";
+  S.llista = o; if (!WEB) guarda("depura-llista", o);
   for (const b of $("subLlista").children) b.classList.toggle("on", b.dataset.o === o);
   $("lBanc").style.display = o === "banc" ? "" : "none";
   $("lWeb").style.display = o === "web" ? "" : "none";
@@ -408,17 +450,21 @@ let cercaWeb = null;
 async function carregaWeb() {
   $("infoWeb").textContent = "Carregant…";
   try {
-    const d = await obte(`/api/web?q=${encodeURIComponent($("qWeb").value)}`);
-    S.web = d.cancons;
-    $("infoWeb").textContent = `${d.cancons.length} cançons amb anàlisi a ${d.web}`;
-    $("tWeb").tBodies[0].innerHTML = d.cancons.map((c) => `<tr data-clau="web-${c.id}"><td class="n">${c.id}</td>` +
-      `<td>${esc(c.title)} <span class="muted">— ${esc(c.artist)}</span></td><td>${esc(c.app_version || "—")}</td>` +
-      `<td>${c.has_raw ? "✓" : "<span class='muted'>no (només l'anàlisi)</span>"}</td><td class="petit">${esc(c.analyzed_at || "")}</td><td></td></tr>`).join("");
+    const d = await obte(`${API}/songs?q=${encodeURIComponent($("qWeb").value)}`);
+    S.web = d.songs;
+    $("infoWeb").textContent = `${d.songs.length} transcripcions${d.songs.length >= 300 ? " (les més recents; cerca per trobar-ne d'altres)" : ""}`;
+    dibuixaWeb();
   } catch (e) { S.web = null; $("infoWeb").innerHTML = `<span class="bad">${esc(e.message)}</span>`; $("tWeb").tBodies[0].innerHTML = ""; }
+}
+function dibuixaWeb() {
+  const id = S.T?.origen === "web" ? S.T.id : null;
+  $("tWeb").tBodies[0].innerHTML = (S.web || []).map((c) => `<tr data-clau="web-${c.id}" ${c.id === id ? "class='on' style='background:var(--accent-soft)'" : ""}><td class="n">${c.id}</td>` +
+    `<td>${esc(c.title)} <span class="muted">— ${esc(c.artist)}</span></td><td>${esc(c.app_version || "—")}</td>` +
+    `<td class="petit">${esc(c.analyzed_at || "")}</td><td>${c.has_trace ? `✓ <span class="petit muted">${esc(c.trace_app_version || "")}</span>` : "<span class='muted petit'>només l'anàlisi</span>"}</td></tr>`).join("");
 }
 $("qWeb").oninput = () => { clearTimeout(cercaWeb); cercaWeb = setTimeout(carregaWeb, 300); };
 async function carregaLocals() {
-  S.locals = await obte("/api/locals").catch(() => []);
+  S.locals = await obte(`${API}/locals`).catch(() => []);
   dibuixaLocals();
 }
 function dibuixaLocals() {
@@ -434,38 +480,112 @@ $("sCompara").onchange = async () => { S.compara = $("sCompara").value || null; 
 // ---------- Cançó ----------
 const ORIGENS = { banc: "banc", web: "web", local: "cache local", fitxer: "fitxer" };
 async function obreCanco(clauCanco, vista, refes = false) {
-  if (/^\d+$/.test(String(clauCanco))) clauCanco = `banc-${clauCanco}`;
+  if (/^\d+$/.test(String(clauCanco))) clauCanco = WEB ? `web-${clauCanco}` : `banc-${clauCanco}`;
   const nova = clauCanco !== S.clau;
   S.clau = clauCanco;
   const c = S.cancons.find((x) => x.clau === clauCanco);
   $("titol").textContent = c ? `${c.titol} — ${c.artista}` : clauCanco;
-  estat(refes ? "Recalculant la traça amb el codi actual…" : "Carregant la traça (si el codi ha canviat, es recalcula: ~5–20 s)…");
+  estat(WEB ? "Carregant…" : refes ? "Recalculant la traça amb el codi actual…" : "Carregant la traça (si el codi ha canviat, es recalcula: ~5–20 s)…");
   try {
-    const T = await obte(`/api/traca/${clauCanco}${refes ? "?refes=1" : ""}`);
+    const T = WEB ? await tracaWeb(clauCanco) : await obte(`${API}/traca/${clauCanco}${refes ? "?refes=1" : ""}`);
     prepara(T);
     if (c) c.traca = true;
-    estat(`traça ${T.codi} · ${T.generat} · ${T.segons} s`);
-  } catch (e) { estat("No s'ha pogut fer la traça:\n" + e.message, true); return; }
+    estat(T.nomes_analisi ? "" : WEB ? `traça del worker ${T.versio} · ${T.generat}` : `traça ${T.codi} · ${T.generat} · ${T.segons} s`);
+  } catch (e) { estat("No s'ha pogut obrir la cançó:\n" + e.message, true); return; }
   const T = S.T;
   $("titol").innerHTML = `${esc(T.titol)} — ${esc(T.artista)} <span class="origen">${ORIGENS[T.origen] || T.origen}${T.origen === "web" ? ` #${T.id}` : ""}</span>`;
   document.title = `${T.titol} · depurador`;
-  $("bRefes").style.display = "";
-  $("avisosCanco").innerHTML = [...(T.nomes_analisi ? ["Només l'anàlisi: sense dades crues no es pot refer el postprocés (no hi ha passos intermedis)."] : []),
+  $("bRefes").style.display = WEB ? "none" : "";
+  $("bReprocessa").style.display = WEB ? "" : "none";
+  $("avisosCanco").innerHTML = [...(T.nomes_analisi ? [WEB
+      ? "Aquesta anàlisi no té traça (és d'abans que els workers la pugessin): només es veu el resultat, sense els passos intermedis. «Reprocessa amb un worker» la refà i en puja la traça."
+      : "Només l'anàlisi: sense dades crues no es pot refer el postprocés (no hi ha passos intermedis)."] : []),
     ...(T.avisos || [])].map((a) => `<div>⚠ ${esc(a)}</div>`).join("");
   if (nova || refes) muntaReproductor();
-  S.notes = await obte(`/api/notes/${clauCanco}`).catch(() => []);
+  S.notes = await carregaNotes();
+  muntaNotes();
   await carregaRunB();
   muntaCarrils();
   omplirSelectorsContent();
   dibuixaFonts(); dibuixaSeccions(); dibuixaLletra(); dibuixaProblemes();
+  if (WEB) dibuixaWeb();
   if (S.sel != null && S.sel < S.T.durada) { const amp = S.t1 - S.t0; S.t0 = Math.max(0, S.sel - amp / 3); S.t1 = S.t0 + amp; }
   mostraVista(vista);
-  if (S.sel != null) mostraDetall(S.sel);
+  mostraDetall(tAra());
 }
 $("bRefes").onclick = () => S.clau && obreCanco(S.clau, S.vista === "llista" ? "temps" : S.vista, true);
+$("bReprocessa").onclick = async () => {
+  if (!S.T || S.T.origen !== "web") return;
+  try {
+    const d = await obte(`${API}/songs/${S.T.id}/reprocess`, { method: "POST" });
+    estat(d.message || "Encuada al principi de la cua: quan un worker l'acabi, recarrega la cançó.");
+  } catch (e) { estat(e.message, true); }
+};
+
+// Traça d'una cançó del canconer: la que va pujar el worker, o una de feta amb l'anàlisi publicada
+async function tracaWeb(clauCanco) {
+  const id = +clauCanco.replace(/^web-/, "");
+  const d = await obte(`${API}/songs/${id}`);
+  const publicada = deCompacte(d.analysis);
+  const T = d.trace || tracaDeAnalisi(publicada, d.transcriber_content || d.song.content || "");
+  const ytUrl = /(?:[?&]v=|youtu\.be\/|\/shorts\/|\/embed\/)([\w-]{11})/.exec(d.song.youtube_url || "");
+  Object.assign(T, { clau: clauCanco, origen: "web", id, titol: d.song.title, artista: d.song.artist,
+    youtube_id: T.youtube_id || publicada.source.youtube_id || ytUrl?.[1] || null, audio_local: false });
+  T.info = { ...(T.info || {}), content_huma: d.song.content_human };
+  // Es compara amb el que hi ha ara a la web: l'anàlisi publicada i el content (potser editat a mà)
+  // El content de la web és en formes amb el capo de la cançó (potser canviat a mà): es compara al so
+  T.desada = { nom: `Web ara (anàlisi ${d.analysis_app_version || "?"})`, analisi: publicada, content: d.song.content || "",
+    capo: d.song.capo || 0 };
+  return T;
+}
+
+// Format compacte de l'anàlisi (schema.a_compacte del transcriptor) → el de SongAnalysis
+function deCompacte(d) {
+  const s = (ms) => ms / 1000, num = d.tempo ? d.tempo.time_signature[0] : 4;
+  const temps = []; let acc = 0;
+  for (const dt of d.beats.dt) { acc += dt; temps.push(acc); }
+  const db = new Set(d.beats.downbeats), primer = d.beats.downbeats.length ? d.beats.downbeats[0] : temps.length;
+  let ultim = null;
+  const numeros = temps.map((_, i) => { if (db.has(i)) ultim = i; return ultim == null ? num - (primer - i) + 1 : i - ultim + 1; });
+  for (const [i, b] of Object.entries(d.beats.beat_exceptions || {})) numeros[+i] = b;
+  let compas = 0;
+  const beats = temps.map((t, i) => { if (numeros[i] === 1) compas++; return { t: s(t), bar: compas, beat: numeros[i] }; });
+  return {
+    source: d.source, meta: d.meta, key: d.key, capo_suggerit: d.capo || 0, tempo: d.tempo, beats,
+    chords: d.chords.map((f) => { const p = f[4] != null ? beats[f[4]] : null;
+      return { start: s(f[0]), end: s(f[1]), label: f[2], raw: f.length > 5 ? f[5] : f[2], conf: f[3], bar: p?.bar ?? null, beat: p?.beat ?? null }; }),
+    words: d.words.map(([a, b, text, conf]) => ({ start: s(a), end: s(b), text, conf })),
+    lines: d.lines.map(([a, b, w0, w1, section]) => ({ start: s(a), end: s(b), word_range: [w0, w1], section })),
+    sections: d.sections.map(([a, b, label, name]) => ({ start: s(a), end: s(b), label, name })),
+    lyrics_source: d.lyrics_source, models: d.models || {}, avisos: d.warnings || [], chord_sources: d.chord_sources || [],
+  };
+}
+
+// Sense traça: els passos fets amb l'anàlisi final (com genera._passos_de_analisi)
+function tracaDeAnalisi(a, content) {
+  const beats = a.beats.map((b) => b.t), w = a.words;
+  const elements = a.lines.map((l) => ({ tipus: "linia", start: l.start, end: l.end, word_range: l.word_range,
+    text: w.slice(l.word_range[0], l.word_range[1]).map((p) => p.text).join(" "), acords: [] }));
+  const seccions = a.sections.map((s) => ({ label: s.label[0].toUpperCase() + s.label.slice(1), name: s.name, start: s.start, end: s.end, elements: [] }));
+  const segs = a.chords.map((c) => ({ start: c.start, end: c.end, label: c.label, raw: c.raw, conf: c.conf }));
+  return {
+    nomes_analisi: true, versio: a.models?.app || "", generat: "", avisos: [], analisi: a, content, sense_fonts: null,
+    referencia: null, metriques: null, rodes: [],
+    passos: {
+      ritme: { pulsacions_crues: beats, inicis_compas_crus: a.beats.filter((b) => b.beat === 1).map((b) => b.t), correccions: [],
+        bpm: a.tempo?.bpm ?? null, compas: a.tempo ? a.tempo.time_signature : [4, 4], desfasament: 0 },
+      probabilitats: { vores: [...beats, a.source.duration_s], etiquetes: [], top: beats.map(() => []) },
+      acords_audio: { segs }, lletra: { font: a.lyrics_source, asr: [], correccions_asr: [], paraules: w,
+        linies: a.lines.map((l) => l.word_range), aparellades: null, descartades: [], text: null },
+      fonts: null, acords_fonts: { segs, resum: null }, tonalitat: { tonalitat: a.key, capo: a.capo_suggerit },
+      estructura: { elements, seccions, content }, seccions_fonts: { seccions, content }, quadra: null,
+      final: { elements, seccions, content },
+    },
+  };
+}
 async function carregaRunB() {
   S.runB = null;
-  if (S.compara && S.T?.origen === "banc") S.runB = await obte(`/api/run/${encodeURIComponent(S.compara)}/${S.T.id}`).catch(() => null);
+  if (S.compara && S.T?.origen === "banc") S.runB = await obte(`${API}/run/${encodeURIComponent(S.compara)}/${S.T.id}`).catch(() => null);
   if (S.T) { muntaCarrils(); omplirSelectorsContent(); }
 }
 
@@ -490,7 +610,9 @@ function indexa(T) {
   T.etiquetes = P.probabilitats.etiquetes;
   T.capo = P.tonalitat.capo;
   T.tabs = P.fonts ? P.fonts.tabs : [];
-  T.linies = (P.final.elements || []).filter((e) => e.tipus === "linia").map((e) => ({ clau: clau(e.text), start: e.start, end: e.end }));
+  T.referencia = T.referencia || { content: "", transport: 0, capo: T.capo, acords: [], seccions: [], sense_posicio: [] };
+  T.linies = (P.final.elements || []).filter((e) => e.tipus === "linia")
+    .map((e) => ({ clau: clau(e.text), start: e.start, end: e.end, w: e.word_range }));
   return T;
 }
 const unitatA = (t) => { const v = S.T.vores; let lo = 0, hi = v.length - 2;
@@ -509,39 +631,87 @@ function seccionsDe(llista, nom) {
 // ---------- Línia de temps ----------
 const ETIQ = 150; // amplada de la columna de noms
 let carrils = [];
+// Files plegables: plegades, només es veu la fila del grup (el resultat); desplegades, també les
+// del procés (indentades). La de BTC passa d'1 a 3 opcions.
+const PLEGATS = { compas: true, btc: true, final: false, consens: true, paraules: true, secFinal: false, ref: true, comp: true };
+const plegat = (id) => S.plegats[id] ?? PLEGATS[id] ?? true;
+const DESC = {
+  compas: "<b>Compassos</b>: la graella de pulsacions definitiva (després de corregir les de Beat This), amb el número de cada compàs. És el rellotge de tota l'anàlisi: acords, seccions i rodes es compten en pulsacions i compassos d'aquesta graella.",
+  crues: "<b>Pulsacions crues</b>: el que va donar Beat This abans de corregir-ho. Ratlles fines: pulsacions; gruixudes: inicis de compàs. En taronja, les zones on s'ha corregit la graella (pulsacions doblades, forats omplerts, extrems).",
+  btc: "<b>BTC</b>: el model d'acords (BTC) per a cada pulsació, abans de cap regla musical. Plegada, només l'acord més probable; desplegada, els tres més probables. L'opacitat és la probabilitat.",
+  final: "<b>Acords finals</b>: els acords que es publiquen. ▲ vermell: l'acord de l'àudio s'ha substituït pel de les tabs; ● verd: les tabs el confirmen; sense marca: només àudio. Desplega-la per veure el procés.",
+  audio: "<b>Acords d'àudio</b>: el resultat del Viterbi per compassos amb només el que se sent (les probabilitats de BTC i les regles d'harmonia), abans de contrastar-lo amb les tabs d'internet.",
+  sense: "<b>Sense tabs</b>: tot el postprocés tornat a fer sense les tabs d'internet. Comparat amb els acords finals, mostra què hi han aportat les tabs.",
+  consens: "<b>Consens de les tabs</b>: la bonificació que dona el conjunt de tabs vàlides a cada acord en cada pulsació (el vot ponderat de totes). El Viterbi d'àudio es torna a passar amb aquesta bonificació per obtenir els acords finals. Desplega-la per veure cada tab.",
+  tab: "<b>Tab d'internet</b>, alineada amb la lletra i les pulsacions. L'opacitat és el pes que té al consens; vora vermella: l'àudio no permet aquell acord. Gris: tab descartada (motiu a la pestanya Fonts). Entre parèntesis, el transport aplicat per posar-la al to de l'àudio.",
+  paraules: "<b>Lletra alineada</b>: les paraules de la lletra amb el temps on es canten, una línia de color per cada línia de lletra. Desplega-la per veure què va sentir Whisper.",
+  asr: "<b>Whisper (cru)</b>: les paraules que va reconèixer Whisper, abans d'aparellar-les amb la lletra i de corregir-ne els temps. L'opacitat és la confiança.",
+  secFinal: "<b>Seccions finals</b>: les que es publiquen, després de <i>quadra</i> (que mou les fronteres perquè cada secció tingui un nombre de compassos múltiple de 4 i decideix les cues instrumentals). En vermell, les que no són múltiples de 4. Desplega-la per veure els passos anteriors.",
+  secEstructura: "<b>Seccions detectades</b>: el primer pas, només amb l'àudio i la lletra (structure.detecta): repeticions de lletra i d'acords, estrofes, tornades i instrumentals.",
+  secFonts: "<b>Seccions amb les tabs</b>: després de contrastar les detectades amb les seccions escrites a les tabs (noms i fronteres). «cua» és el vot de les tabs sobre si els acords sense veu del final són la cua de la secció.",
+  ref: "<b>Referència</b>: els acords del content escrit per una persona, col·locats al temps aparellant-ne la lletra amb la de l'anàlisi. Verd si l'acord final coincideix (major/menor, a menys d'un temps); vermell si no. Ratllat: posició aproximada (línies sense lletra).",
+  secRef: "<b>Seccions de la referència</b>: les del content escrit per una persona, al temps de la primera línia de lletra de cada una.",
+  comp: "<b>Acords comparats</b>: els d'una altra anàlisi de la mateixa cançó (un altre run del banc, la que hi ha publicada a la web o la que es va desar en local).",
+  secComp: "<b>Seccions comparades</b>: les de l'altra anàlisi.",
+  notes: "<b>Notes</b>: les que has deixat en aquesta cançó (al panell de la dreta).",
+};
 function muntaCarrils() {
   const T = S.T, P = T.passos;
-  const segsFinals = P.acords_fonts.segs, comp = comparacio();
+  const segsFinals = P.acords_fonts.segs, comp = comparacio(), sense = T.sense_fonts?.acords;
   carrils = [
-    { id: "compas", nom: "Compassos", h: 24, dib: dibCompas },
-    { id: "crues", nom: "Pulsacions crues", h: 14, dib: dibCrues, tip: tipCrues },
-    { id: "btc", nom: "BTC per pulsació", h: 48, dib: dibBTC, tip: tipBTC },
-    { id: "audio", nom: "Acords d'àudio", h: 22, dib: (c, l) => dibSegs(c, l, P.acords_audio.segs), tip: (t) => tipSeg(P.acords_audio.segs, t) },
-    ...T.tabs.map((tab, i) => ({ id: "tab" + i, nom: `${tab.site}${tab.used ? "" : " ✗"}${tab.transport ? ` (${tab.transport > 0 ? "+" : ""}${tab.transport})` : ""}`,
+    { id: "compas", nom: "Compassos", grup: true, h: 24, dib: dibCompas },
+    { id: "crues", pare: "compas", nom: "Pulsacions crues", h: 14, dib: dibCrues, tip: tipCrues },
+    { id: "btc", nom: "BTC", grup: true, h: () => plegat("btc") ? 18 : 48, dib: dibBTC, tip: tipBTC },
+    { id: "final", nom: "Acords finals", grup: true, h: 26, dib: (c, l) => dibSegs(c, l, segsFinals, true), tip: (t) => tipSeg(segsFinals, t) },
+    { id: "audio", pare: "final", nom: "Acords d'àudio", h: 22, dib: (c, l) => dibSegs(c, l, P.acords_audio.segs), tip: (t) => tipSeg(P.acords_audio.segs, t) },
+    ...(sense ? [{ id: "sense", pare: "final", nom: "Sense tabs", h: 20, dib: (c, l) => dibSegs(c, l, sense), tip: (t) => tipSeg(sense, t) }] : []),
+    ...(T.tabs.length ? [{ id: "consens", nom: "Tabs: consens", grup: true, h: 18, dib: dibConsens, tip: tipConsens }] : []),
+    ...T.tabs.map((tab, i) => ({ id: "tab" + i, pare: "consens", desc: "tab", nom: `${tab.site}${tab.used ? "" : " ✗"}${tab.transport ? ` (${tab.transport > 0 ? "+" : ""}${tab.transport})` : ""}`,
       h: 20, dib: (c, l) => dibTab(c, l, tab), tip: (t) => tipTab(tab, t) })),
-    { id: "consens", nom: "Consens (bonificació)", h: 16, dib: dibConsens, tip: tipConsens },
-    { id: "final", nom: "Acords finals", h: 26, dib: (c, l) => dibSegs(c, l, segsFinals, true), tip: (t) => tipSeg(segsFinals, t) },
-    ...(teRef() ? [{ id: "ref", nom: nomRef(), h: 22, dib: dibRef, tip: tipRef }] : []),
-    ...(comp ? [{ id: "comp", nom: `Acords: ${comp.nom}`, h: 20, dib: (c, l) => dibSegs(c, l, comp.analisi.chords), tip: (t) => tipSeg(comp.analisi.chords, t) }] : []),
-    { id: "paraules", nom: "Lletra alineada", h: 20, dib: dibParaules, tip: tipParaules },
-    { id: "asr", nom: "Whisper (cru)", h: 18, dib: dibASR, tip: tipASR },
-    { id: "secEstructura", nom: "Seccions: detectades", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(P.estructura.seccions, (s) => s.name || s.label)) },
-    { id: "secFonts", nom: "Seccions: tabs", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(P.seccions_fonts.seccions, (s) => (s.name || s.label) + (s.vot_cua != null ? ` · cua ${s.vot_cua}` : ""))) },
-    { id: "secFinal", nom: "Seccions: quadra", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(P.final.seccions, (s) => s.name)) },
-    ...(teRef() ? [{ id: "secRef", nom: "Seccions: referència", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(T.referencia.seccions, (s) => s.name)) }] : []),
-    ...(comp ? [{ id: "secComp", nom: `Seccions: ${comp.nom}`, h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(comp.analisi.sections, (s) => s.name)) }] : []),
+    ...(teRef() ? [{ id: "ref", nom: nomRef(), grup: true, h: 22, dib: dibRef, tip: tipRef },
+      { id: "secRef", pare: "ref", nom: "Seccions", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(T.referencia.seccions, (s) => s.name)) }] : []),
+    ...(comp ? [{ id: "comp", nom: comp.nom, grup: true, h: 20, dib: (c, l) => dibSegs(c, l, comp.analisi.chords), tip: (t) => tipSeg(comp.analisi.chords, t) },
+      { id: "secComp", pare: "comp", nom: "Seccions", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(comp.analisi.sections, (s) => s.name)) }] : []),
+    { id: "paraules", nom: "Lletra alineada", grup: true, h: 20, dib: dibParaules, tip: tipParaules },
+    { id: "asr", pare: "paraules", nom: "Whisper (cru)", h: 18, dib: dibASR, tip: tipASR },
+    { id: "secFinal", nom: "Seccions finals", grup: true, h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(P.final.seccions, (s) => s.name)) },
+    { id: "secEstructura", pare: "secFinal", nom: "1 · Detectades", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(P.estructura.seccions, (s) => s.name || s.label)) },
+    { id: "secFonts", pare: "secFinal", nom: "2 · Amb les tabs", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(P.seccions_fonts.seccions, (s) => (s.name || s.label) + (s.vot_cua != null ? ` · cua ${s.vot_cua}` : ""))) },
     { id: "notes", nom: "Notes", h: 16, dib: dibNotes },
   ];
-  $("carrils").innerHTML = carrils.map((c) =>
-    `<label><input type="checkbox" data-c="${c.id}" ${S.carrils[c.id] === false ? "" : "checked"}> ${esc(c.nom)}</label>`).join("");
-  $("llegenda").innerHTML = "Acords finals: <b style='color:var(--bad)'>▲</b> substituït per les tabs · <b style='color:var(--ok)'>●</b> confirmat · sense marca: només àudio. " +
-    "Tabs: opacitat = pes; vora vermella = l'àudio no el permet. Referència: verda si coincideix amb l'acord final (major/menor), vermella si no; ratllada = posició aproximada. " +
+  // Sense traça (només l'anàlisi) no hi ha passos intermedis: fora les files que repetirien el resultat
+  if (T.nomes_analisi) carrils = carrils.filter((c) => !["crues", "btc", "audio", "sense", "asr", "secEstructura", "secFonts"].includes(c.id));
+  // Un grup sense files a dins (p. ex. BTC) també es pot plegar: canvia l'alçada
+  for (const c of carrils) c.fills = carrils.filter((x) => x.pare === c.id).length;
+  $("llegenda").innerHTML = "Clica o arrossega a la línia de temps per moure't · passa per sobre del nom d'una fila per saber què és. " +
     "Seccions: en vermell les que no tenen un múltiple de 4 compassos.";
   if (S.vista === "temps") redimensiona();
 }
-$("carrils").onchange = (e) => { const id = e.target.dataset.c; if (!id) return; S.carrils[id] = e.target.checked;
-  guarda("depura-carrils", S.carrils); redimensiona(); };
-const visibles = () => carrils.filter((c) => S.carrils[c.id] !== false);
+const amagat = (c) => S.carrils[c.id] === false;
+const visibles = () => carrils.filter((c) => !amagat(c) && (!c.pare || (!plegat(c.pare) && !amagat(carrils.find((x) => x.id === c.pare)))));
+const alcada = (c) => typeof c.h === "function" ? c.h() : c.h;
+function mostraCarril(id, on) { S.carrils[id] = on; guarda("depura-carrils", S.carrils); redimensiona(); }
+function noms() {
+  // Noms de les files (a sobre del canvas): plega/desplega, casella per amagar-la i nom amb la descripció
+  $("ltNoms").innerHTML = geo.files.map(({ c, y, h }) => {
+    const plega = c.grup && (c.fills || c.id === "btc") ? `<button class="plega" data-plega="${c.id}" title="${plegat(c.id) ? "Desplega" : "Plega"}">${plegat(c.id) ? "▸" : "▾"}</button>` : c.pare ? "" : `<span class="buit"></span>`;
+    return `<div class="nom-c ${c.pare ? "fill" : ""} ${c.grup ? "grup" : ""}" style="top:${y}px;height:${h}px">${plega}` +
+      `<input type="checkbox" checked data-c="${c.id}" title="Amaga la fila"><span class="txt" data-desc="${esc(DESC[c.desc || c.id] || "")}">${esc(c.nom)}</span></div>`;
+  }).join("");
+  const ocults = carrils.filter(amagat);
+  $("amagades").innerHTML = ocults.length ? `<span class="titolet">Files amagades</span>` +
+    `<label><input type="checkbox" data-totes> totes</label>` +
+    ocults.map((c) => `<label data-desc="${esc(DESC[c.desc || c.id] || "")}"><input type="checkbox" data-c="${c.id}"> ${esc(c.pare ? `${carrils.find((x) => x.id === c.pare)?.nom} › ${c.nom}` : c.nom)}</label>`).join("") : "";
+}
+$("ltNoms").onclick = (e) => {
+  const p = e.target.closest("[data-plega]");
+  if (p) { S.plegats[p.dataset.plega] = !plegat(p.dataset.plega); guarda("depura-plegats", S.plegats); redimensiona(); }
+};
+$("ltNoms").onchange = (e) => { const id = e.target.dataset.c; if (id) mostraCarril(id, e.target.checked); };
+$("amagades").onchange = (e) => {
+  if (e.target.dataset.totes != null) { for (const c of carrils) delete S.carrils[c.id]; guarda("depura-carrils", S.carrils); redimensiona(); return; }
+  const id = e.target.dataset.c; if (id) mostraCarril(id, e.target.checked);
+};
 
 const xDe = (t, W) => ETIQ + (t - S.t0) / (S.t1 - S.t0) * (W - ETIQ);
 const tDe = (x, W) => S.t0 + (x - ETIQ) / (W - ETIQ) * (S.t1 - S.t0);
@@ -550,12 +720,13 @@ function redimensiona() {
   if (!S.T) return;
   const W = $("lt").clientWidth, dpr = window.devicePixelRatio || 1;
   let y = 0;
-  geo.files = visibles().map((c) => { const f = { c, y, h: c.h }; y += c.h + 2; return f; });
+  geo.files = visibles().map((c) => { const f = { c, y, h: alcada(c) }; y += f.h + 2; return f; });
   geo.W = W; geo.H = y; geo.dpr = dpr;
   for (const id of ["ltBase", "ltOver"]) {
     const cv = $(id); cv.width = W * dpr; cv.height = y * dpr; cv.style.width = W + "px"; cv.style.height = y + "px";
   }
   const m = $("mini"); m.width = m.clientWidth * dpr; m.height = 26 * dpr;
+  noms();
   dibuixa();
 }
 window.addEventListener("resize", () => S.vista === "temps" && redimensiona());
@@ -573,8 +744,7 @@ function dibuixa() {
     c.save(); c.beginPath(); c.rect(ETIQ, f.y, W - ETIQ, f.h); c.clip();
     f.c.dib(c, { y: f.y, h: f.h, W });
     c.restore();
-    c.fillStyle = css("--panel"); c.fillRect(0, f.y, ETIQ - 4, f.h);
-    c.fillStyle = css("--muted"); c.textAlign = "left"; c.fillText(f.c.nom, 6, f.y + f.h / 2, ETIQ - 12);
+    c.fillStyle = css("--panel"); c.fillRect(0, f.y, ETIQ - 4, f.h);  // el nom és a #ltNoms
     c.strokeStyle = css("--line"); c.beginPath(); c.moveTo(0, f.y + f.h + 1); c.lineTo(W, f.y + f.h + 1); c.stroke();
   }
   dibuixaMini(); dibuixaCursor(); desaHash();
@@ -610,11 +780,11 @@ function tipCrues(t) {
   return k ? `Correcció de pulsacions: <b>${esc(k.tipus)}</b> ${mmss(k.inici)}–${mmss(k.fi)}` : null;
 }
 function dibBTC(c, l) {
-  const P = S.T.passos.probabilitats, v = P.vores, fh = l.h / 3;
+  const P = S.T.passos.probabilitats, v = P.vores, n = plegat("btc") ? 1 : 3, fh = l.h / n;
   for (let u = 0; u < P.top.length; u++) {
     if (!visible(v[u], v[u + 1])) continue;
     const x0 = xDe(v[u], l.W), x1 = xDe(v[u + 1], l.W);
-    P.top[u].slice(0, 3).forEach(([k, p], r) => rectText(c, x0, x1, l.y + r * fh, fh, colorAcord(P.etiquetes[k], Math.min(1, 0.15 + p * 1.2)),
+    P.top[u].slice(0, n).forEach(([k, p], r) => rectText(c, x0, x1, l.y + r * fh, fh, colorAcord(P.etiquetes[k], Math.min(1, 0.15 + p * 1.2)),
       x1 - x0 > 38 ? `${P.etiquetes[k]} ${Math.round(p * 100)}` : P.etiquetes[k]));
   }
 }
@@ -737,8 +907,6 @@ function dibuixaCursor() {
   c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, W, H);
   const t = tAra();
   if (t >= S.t0 && t <= S.t1) { c.fillStyle = css("--cursor"); c.fillRect(xDe(t, W) - 1, 0, 2, H); }
-  if (S.sel != null && S.sel >= S.t0 && S.sel <= S.t1) { c.strokeStyle = css("--sel"); c.setLineDash([4, 3]); c.beginPath();
-    c.moveTo(xDe(S.sel, W), 0); c.lineTo(xDe(S.sel, W), H); c.stroke(); c.setLineDash([]); }
   if (arrossega?.bucle) { const [a, b] = [arrossega.ta, arrossega.tb].sort((x, y) => x - y);
     c.fillStyle = "rgba(0,95,184,.12)"; c.fillRect(xDe(a, W), 0, xDe(b, W) - xDe(a, W), H); }
 }
@@ -773,15 +941,22 @@ window.addEventListener("mousemove", (e) => {
       S.t0 = arrossega.t0 - dt; S.t1 = arrossega.t1 - dt; dibuixa(); }
     return;
   }
+  // Qualsevol element amb data-desc (noms de fila, opcions del content, pestanyes de tabs) en dona la descripció
+  const ambDesc = e.target.closest?.("[data-desc]");
+  if (ambDesc && ambDesc.dataset.desc) { mostraTip(ambDesc.dataset.desc, e); return; }
   if (e.target !== over) { $("tip").style.display = "none"; return; }
   const r = over.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
   const f = geo.files.find((f) => y >= f.y && y < f.y + f.h + 2);
   const html = x >= ETIQ && f?.c.tip ? f.c.tip(tDe(x, geo.W)) : null;
-  const tip = $("tip");
-  if (!html) { tip.style.display = "none"; return; }
-  tip.innerHTML = `<span class="muted">${mmss(tDe(x, geo.W))}</span> ${html}`; tip.style.display = "block";
-  tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + "px"; tip.style.top = (e.clientY + 16) + "px";
+  if (!html) { $("tip").style.display = "none"; return; }
+  mostraTip(`<span class="muted">${mmss(tDe(x, geo.W))}</span> ${html}`, e);
 });
+function mostraTip(html, e) {
+  const tip = $("tip");
+  tip.innerHTML = html; tip.style.display = "block";
+  tip.style.left = Math.max(8, Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8)) + "px";
+  tip.style.top = (e.clientY + 18 + tip.offsetHeight > innerHeight ? e.clientY - tip.offsetHeight - 10 : e.clientY + 18) + "px";
+}
 window.addEventListener("mouseup", () => {
   if (!arrossega) return;
   const a = arrossega; arrossega = null;
@@ -835,20 +1010,42 @@ function mostraDetall(t) {
     `<div>Detectada: ${esc(seccio(P.estructura.seccions, (s) => s.name || s.label))} · Tabs: ${esc(seccio(P.seccions_fonts.seccions, (s) => s.name || s.label))}</div>` +
     `<div>Quadra: <b>${esc(seccio(P.final.seccions, (s) => s.name))}</b> · ref.: ${esc(seccio(T.referencia.seccions, (s) => s.name))}</div></div>`);
   if (k >= 0) html.push(`<div class="bloc"><span class="muted">Paraula:</span> «${esc(P.lletra.paraules[k].text)}»</div>`);
-  html.push(`<div class="bloc"><textarea id="nota" rows="2" placeholder="Nota en aquest instant (es desa a work/depura/notes.json)"></textarea>` +
-    `<div class="fila" style="margin-top:4px"><button id="bNota">Desa la nota</button><button id="bInforme" title="Copia aquest detall en markdown per enganxar-lo al xat">Copia informe</button></div></div>`);
-  const prop = S.notes.filter((n) => Math.abs(n.t - t) < 3);
-  if (prop.length) html.push(`<div class="bloc"><div class="muted petit">Notes a prop</div>` + prop.map((n) =>
-    `<div class="petit">${mmss(n.t)} · ${esc(n.text)} <a href="#" data-esborra="${S.notes.indexOf(n)}">esborra</a></div>`).join("") + "</div>");
-  $("detall").innerHTML = html.join("");
+  $("detallViu").innerHTML = html.join("");
+  detallAra = { u, t };
+  dibuixaNotesProp(t);
+}
+// El detall segueix el moment que sona: es refà quan canvia la pulsació (no a cada fotograma)
+let detallAra = null;
+function seguixDetall(t) {
+  if (!S.T || S.vista !== "temps") return;
+  const u = unitatA(t);
+  if (!detallAra || detallAra.u !== u || Math.abs(detallAra.t - t) > 1.5) mostraDetall(t);
+}
+// Notes: el formulari no es refà (no s'esborra el que escrius mentre sona); la llista de les properes sí
+function muntaNotes() {
+  $("detallNotes").innerHTML = `<div class="bloc"><textarea id="nota" rows="2" placeholder="Nota en aquest instant (${WEB ? "es desa en aquest navegador" : "es desa a work/depura/notes.json"})"></textarea>` +
+    `<div class="fila" style="margin-top:4px"><button id="bNota">Desa la nota</button><button id="bInforme" title="Copia el detall d'aquest instant en markdown per enganxar-lo al xat">Copia informe</button></div></div><div id="notesProp"></div>`;
   $("bNota").onclick = async () => { const text = $("nota").value.trim(); if (!text) return;
-    S.notes.push({ t: +t.toFixed(2), text, codi: T.codi }); await desaNotes(); mostraDetall(t); dibuixa(); };
-  $("bInforme").onclick = () => copiaInforme(t);
-  $("detall").querySelectorAll("[data-esborra]").forEach((a) => a.onclick = async (e) => { e.preventDefault();
-    S.notes.splice(+a.dataset.esborra, 1); await desaNotes(); mostraDetall(t); dibuixa(); });
+    const t = tAra();
+    S.notes.push({ t: +t.toFixed(2), text, codi: S.T.codi }); $("nota").value = ""; await desaNotes(); dibuixaNotesProp(t); dibuixa(); };
+  $("bInforme").onclick = () => copiaInforme(tAra());
+  $("notesProp").onclick = async (e) => { const a = e.target.closest("[data-esborra]"); if (!a) return; e.preventDefault();
+    S.notes.splice(+a.dataset.esborra, 1); await desaNotes(); dibuixaNotesProp(tAra()); dibuixa(); };
+}
+function dibuixaNotesProp(t) {
+  if (!$("notesProp")) return;
+  const prop = S.notes.filter((n) => Math.abs(n.t - t) < 3);
+  $("notesProp").innerHTML = prop.length ? `<div class="bloc"><div class="muted petit">Notes a prop</div>` + prop.map((n) =>
+    `<div class="petit">${mmss(n.t)} · ${esc(n.text)} <a href="#" data-esborra="${S.notes.indexOf(n)}">esborra</a></div>`).join("") + "</div>" : "";
+}
+// Notes: en local, a work/depura/notes.json (així es poden llegir des del xat); al canconer, al navegador
+async function carregaNotes() {
+  if (WEB) return llegeix(`depura-notes-${S.clau}`, []);
+  return obte(`${API}/notes/${S.clau}`).catch(() => []);
 }
 async function desaNotes() {
-  await fetch(`/api/notes/${S.clau}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(S.notes) });
+  if (WEB) { guarda(`depura-notes-${S.clau}`, S.notes); return; }
+  await fetch(`${API}/notes/${S.clau}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(S.notes) });
 }
 function copiaInforme(t) {
   const T = S.T, P = T.passos, u = unitatA(t), b = compasA(t);
@@ -1053,8 +1250,9 @@ function bucleReproductor() {
       const amp = S.t1 - S.t0;
       if (sonant && (t > S.t1 - amp * 0.1 || t < S.t0)) { S.t0 = t - amp * 0.1; S.t1 = S.t0 + amp; dibuixa(); }
       else { dibuixaCursor(); dibuixaMini(); }
+      seguixDetall(t);
     }
-    if (S.vista === "content" && sonant) marcaLiniaContent(t);
+    if (S.vista === "content") marcaContent(t, sonant);
   }
   requestAnimationFrame(bucleReproductor);
 }
@@ -1078,25 +1276,39 @@ function fontsContent() {
   const T = S.T, P = T.passos;
   const capoRef = T.referencia.transport + T.capo; // referència (formes) → so
   const comp = comparacio();
+  const descRef = T.origen === "banc" ? "<b>Referència</b>: el content de la base de dades del banc de proves, escrit per una persona. És el que hauria de sortir."
+    : T.info?.content_huma ? "<b>Content escrit per una persona</b>: el de la cançó quan es va fer l'anàlisi. És el que hauria de sortir."
+    : "<b>Content de la web</b>: el que hi havia a la cançó quan es va fer l'anàlisi (escrit pel transcriptor).";
   const f = [
-    ["ref", nomRef(), T.referencia.content, capoRef],
-    ["comp", comp?.nom, comp?.content, comp?.analisi?.capo_suggerit || 0],
-    ["sense", "Sense tabs", T.sense_fonts?.content, T.sense_fonts?.capo ?? T.capo],
-    ["estructura", "1 · Estructura detectada", T.nomes_analisi ? "" : P.estructura.content, T.capo],
-    ["seccions_fonts", "2 · Seccions de les tabs", T.nomes_analisi ? "" : P.seccions_fonts.content, T.capo],
-    ["final", T.nomes_analisi ? "Content" : "3 · Final (quadra + render)", T.content, T.capo],
+    ["ref", nomRef(), T.referencia.content, capoRef, descRef],
+    ["comp", comp?.nom, comp?.content, comp?.capo ?? comp?.analisi?.capo_suggerit ?? 0,
+      T.origen === "web" ? "<b>Web ara</b>: el content que té ara la cançó a la web (potser editat a mà després de l'anàlisi)."
+        : "<b>Anàlisi comparada</b>: el content d'una altra anàlisi de la mateixa cançó (un altre run del banc, o la que es va desar en local)."],
+    ["sense", "Sense tabs", T.sense_fonts?.content, T.sense_fonts?.capo ?? T.capo,
+      "<b>Sense tabs</b>: tot el postprocés tornat a fer sense les tabs d'internet (només l'àudio i la lletra). Comparat amb el final, mostra què hi han canviat les tabs."],
+    ["estructura", "1 · Estructura detectada", T.nomes_analisi ? "" : P.estructura.content, T.capo,
+      "<b>Pas 1 · Estructura detectada</b>: acords i seccions just després de detectar l'estructura amb l'àudio i la lletra, abans de contrastar les seccions amb les tabs i de quadrar-les."],
+    ["seccions_fonts", "2 · Seccions de les tabs", T.nomes_analisi ? "" : P.seccions_fonts.content, T.capo,
+      "<b>Pas 2 · Seccions de les tabs</b>: després de corregir els noms i les fronteres de les seccions amb les que porten escrites les tabs."],
+    ["final", T.nomes_analisi ? "Content" : "3 · Final", T.content, T.capo,
+      "<b>Pas 3 · Final</b>: després de <i>quadra</i> (seccions amb un nombre de compassos múltiple de 4, cues instrumentals al final de la línia) i del render. És el que es publica."],
   ];
   return f.filter(([, , c]) => c);
 }
 function omplirSelectorsContent() {
-  const f = fontsContent(), op = f.map(([k, nom]) => `<option value="${k}">${esc(nom)}</option>`).join("");
-  const a = $("sA").value || llegeix("depura-ca", "ref"), b = $("sB").value || llegeix("depura-cb", "final");
-  $("sA").innerHTML = op; $("sB").innerHTML = op;
-  const per = (k) => f.some(([x]) => x === k);
-  $("sA").value = per(a) ? a : per("ref") ? "ref" : per("comp") ? "comp" : f[0]?.[0] || "";
-  $("sB").value = per(b) ? b : per("final") ? "final" : f[f.length - 1]?.[0] || "";
+  const f = fontsContent(), per = (k) => f.some(([x]) => x === k);
+  if (!per(S.ca)) S.ca = per("ref") ? "ref" : per("comp") ? "comp" : f[0]?.[0] || "";
+  if (!per(S.cb)) S.cb = per("final") ? "final" : f[f.length - 1]?.[0] || "";
+  for (const [id, costat, nom] of [["trA", "ca", "Esquerra"], ["trB", "cb", "Dreta"]])
+    $(id).innerHTML = `<span class="titolet">${nom}</span>` + f.map(([k, n, , , desc]) =>
+      `<button data-k="${k}" data-costat="${costat}" class="${S[costat] === k ? "on" : ""}" data-desc="${esc(desc)}">${esc(n)}</button>`).join("");
 }
-$("sA").onchange = $("sB").onchange = $("cDesplega").onchange = () => { guarda("depura-ca", $("sA").value); guarda("depura-cb", $("sB").value); dibuixaContent(); };
+$("trA").onclick = $("trB").onclick = (e) => {
+  const b = e.target.closest("[data-k]"); if (!b) return;
+  S[b.dataset.costat] = b.dataset.k; guarda("depura-" + b.dataset.costat, b.dataset.k);
+  omplirSelectorsContent(); dibuixaContent();
+};
+$("cDesplega").onchange = () => dibuixaContent();
 function alinea(A, B) {
   // LCS sobre les claus (línies de lletra i títols de secció); la resta s'aparella entre coincidències
   const k = (l) => l.tipus === "lletra" ? "L:" + clau(l.text) : l.tipus === "sec" ? "S:" + clau(l.text.replace(/\d+/g, "")) : null;
@@ -1123,56 +1335,151 @@ function marcaAcords(l, altra, so, soAltra) {
   return l.acords.map((a) => { const mm = majminSo(a.ch, so), w = indexParaula(l.text, a.pos);
     return perParaula.get(w)?.has(mm) ? "ok" : tots.has(mm) ? "mogut" : "dif"; });
 }
+/** Columna on es dibuixa cada acord a la fila d'acords (no es trepitgen: com a htmlLinia). */
+function columnesAcords(l) {
+  let col = 0;
+  return l.acords.map((a) => { const pos = Math.max(a.pos, col); col = pos + a.ch.length + 1; return pos; });
+}
 function htmlLinia(l, classes) {
   if (l.tipus === "sec") return esc(l.text);
   // Acords a sobre del text, a la seva columna
   let dalt = "", col = 0;
-  l.acords.forEach((a, i) => { const pos = Math.max(a.pos, col); dalt += " ".repeat(pos - col) + `<span class="ch ${classes[i] || ""}">${esc(a.ch)}</span>`; col = pos + a.ch.length + 1; dalt += " "; });
+  columnesAcords(l).forEach((pos, i) => { const a = l.acords[i];
+    dalt += " ".repeat(pos - col) + `<span class="ch ${classes[i] || ""}" data-a="${i}">${esc(a.ch)}</span> `; col = pos + a.ch.length + 1; });
   if (!l.text.trim()) return dalt.trimEnd();
   return (l.acords.length ? dalt.trimEnd() + "\n" : "") + esc(l.text);
 }
-function tempsLinies(linies) {
-  // Temps de cada línia de lletra: s'aparella per text amb les línies de l'anàlisi, en ordre
-  let j = 0;
-  return linies.map((l) => { if (l.tipus !== "lletra") return null;
-    const k = S.T.linies.findIndex((x, i) => i >= j && x.clau === clau(l.text));
-    if (k < 0) return null; j = k + 1; return S.T.linies[k].start; });
+/** Interpolació lineal sobre punts [x, y] ordenats per x. */
+function interpola(punts, x) {
+  if (!punts.length) return 0;
+  if (x <= punts[0][0]) return punts[0][1];
+  for (let i = 1; i < punts.length; i++)
+    if (x <= punts[i][0]) { const [x0, y0] = punts[i - 1], [x1, y1] = punts[i]; return x1 > x0 ? y0 + (y1 - y0) * (x - x0) / (x1 - x0) : y1; }
+  return punts[punts.length - 1][1];
 }
+/**
+ * Temps de cada línia d'un content: {t0, t1, fila, punts: [[t, columna]], acords: [t]}.
+ * Les línies de lletra s'aparellen per text, en ordre, amb les línies de l'anàlisi, i cada paraula
+ * va al temps on es canta. Les altres (acords, lletra no aparellada) es reparteixen entre les
+ * aparellades del costat (aproximat). `fila`: la fila de la cel·la on va el cursor (0 acords, 1 lletra).
+ */
+function tempsContent(L) {
+  const W = S.T.analisi.words, res = L.map(() => null);
+  let j = 0;
+  L.forEach((l, i) => {
+    if (l.tipus !== "lletra") return;
+    const k = S.T.linies.findIndex((x, q) => q >= j && x.clau === clau(l.text));
+    if (k < 0) return;
+    j = k + 1;
+    const x = S.T.linies[k], [a, b] = x.w || [0, 0];
+    const cols = []; const re = /\S+/g; let m;
+    while ((m = re.exec(l.text))) if (normalitza(m[0]).length) cols.push(m.index);
+    const punts = [[x.start, 0]];
+    if (cols.length === b - a) cols.forEach((c, q) => { if (W[a + q] && c > 0) punts.push([Math.max(W[a + q].start, punts[punts.length - 1][0]), c]); });
+    punts.push([Math.max(x.end, punts[punts.length - 1][0]), Math.max(l.text.trimEnd().length, 1)]);
+    const invers = punts.map(([t, c]) => [c, t]);  // columna → temps, per als acords
+    res[i] = { t0: x.start, t1: x.end, fila: l.acords.length ? 1 : 0, punts, acords: l.acords.map((ac) => interpola(invers, ac.pos)) };
+  });
+  // La resta, repartida entre les línies aparellades del costat
+  for (let i = 0; i < L.length;) {
+    if (res[i]) { i++; continue; }
+    let k = i; while (k < L.length && !res[k]) k++;
+    const ant = i > 0 ? res[i - 1].t1 : 0, seg = k < L.length ? res[k].t0 : S.T.durada;
+    const amb = []; for (let q = i; q < k; q++) if (L[q].tipus !== "sec") amb.push(q);
+    const pas = Math.max(seg - ant, 0) / Math.max(amb.length, 1);
+    amb.forEach((q, n) => {
+      const l = L[q], t0 = ant + n * pas, t1 = t0 + pas;
+      if (l.tipus === "lletra" || !l.acords.length) {
+        res[q] = { t0, t1, fila: l.acords.length ? 1 : 0, punts: [[t0, 0], [t1, Math.max(l.text.trimEnd().length, 1)]], acords: l.acords.map(() => t0), aprox: true };
+        return;
+      }
+      // Línia d'acords: cada acord, el mateix temps; el cursor passa per sobre de cada un
+      const cols = columnesAcords(l), d = pas / l.acords.length;
+      const punts = cols.map((c, r) => [t0 + r * d, c]);
+      const ultim = l.acords[l.acords.length - 1];
+      punts.push([t1, cols[cols.length - 1] + ultim.ch.length]);
+      res[q] = { t0, t1, fila: 0, punts, acords: cols.map((_, r) => t0 + r * d), aprox: true };
+    });
+    for (let q = i; q < k; q++) if (!res[q]) res[q] = { t0: res[q + 1]?.t0 ?? seg, t1: res[q + 1]?.t0 ?? seg, fila: 0, punts: [], acords: [], sec: true };
+    i = k;
+  }
+  return res;
+}
+// Estat del content mentre sona: per a cada costat, les cel·les i els temps de cada línia
+const CT = { costats: [], ara: [null, null], acord: [null, null], cursors: [], chW: 7.2, maScroll: 0 };
 function dibuixaContent() {
   if (!S.T) return;
   const f = Object.fromEntries(fontsContent().map(([k, , c, so]) => [k, { c, so }]));
-  const a = f[$("sA").value], b = f[$("sB").value];
+  const a = f[S.ca], b = f[S.cb];
   if (!a || !b) { $("ccols").innerHTML = "<span class='muted'>No hi ha content per comparar.</span>"; return; }
   const prep = (x) => llegeixContent($("cDesplega").checked ? desplega(x.c) : x.c);
-  const A = prep(a), B = prep(b), tA = tempsLinies(A), tB = tempsLinies(B);
-  const tDe = new Map([...A.map((l, i) => [l, tA[i]]), ...B.map((l, i) => [l, tB[i]])]);
+  const A = prep(a), B = prep(b);
+  const costats = [A, B].map((L) => ({ L, idx: new Map(L.map((l, i) => [l, i])), temps: tempsContent(L), cel: [] }));
   const html = [];
   for (const [la, lb] of alinea(A, B)) {
-    const cel = (l, altra, so, soAltra) => {
+    const cel = (s, l, altra, so, soAltra) => {
       if (!l) return `<div class="ccel"></div>`;
-      const t = tDe.get(l), sol = !altra && l.tipus !== "sec";
-      return `<div class="ccel ${l.tipus === "sec" ? "sec" : ""} ${t != null ? "clic" : ""} ${sol ? "sol" : ""}" ${t != null ? `data-t="${t}"` : ""}>${htmlLinia(l, marcaAcords(l, altra, so, soAltra))}</div>`;
+      const i = costats[s].idx.get(l), tm = costats[s].temps[i], sol = !altra && l.tipus !== "sec";
+      return `<div class="ccel ${l.tipus === "sec" ? "sec" : ""} clic ${sol ? "sol" : ""}" data-s="${s}" data-i="${i}" data-t="${tm?.t0 ?? ""}">${htmlLinia(l, marcaAcords(l, altra, so, soAltra))}</div>`;
     };
-    html.push(cel(la, lb, a.so, b.so) + cel(lb, la, b.so, a.so));
+    html.push(cel(0, la, lb, a.so, b.so) + cel(1, lb, la, b.so, a.so));
   }
   $("ccols").innerHTML = html.join("");
+  for (const d of $("ccols").querySelectorAll("[data-i]")) costats[+d.dataset.s].cel[+d.dataset.i] = d;
+  CT.costats = costats; CT.ara = [null, null]; CT.acord = [null, null];
+  CT.cursors = [0, 1].map(() => { const c = document.createElement("div"); c.className = "ccursor"; return c; });
+  // Amplada d'un caràcter (la lletra és monoespaiada): per posar el cursor a la columna
+  const mesura = document.createElement("span"); mesura.textContent = "0".repeat(40); mesura.style.visibility = "hidden";
+  $("ccols").querySelector(".ccel")?.appendChild(mesura); CT.chW = (mesura.getBoundingClientRect().width || 288) / 40; mesura.remove();
+  marcaContent(tAra(), false);
 }
-$("ccols").onclick = (e) => { const d = e.target.closest("[data-t]"); if (d) { salta(+d.dataset.t); S.sel = +d.dataset.t; } };
-let liniaAra = null;
-function marcaLiniaContent(t) {
-  let millor = null;
-  for (const d of $("ccols").querySelectorAll("[data-t]")) if (+d.dataset.t <= t + 0.05 && (!millor || +d.dataset.t >= +millor.dataset.t)) millor = d;
-  if (millor === liniaAra) return;
-  liniaAra?.classList.remove("ara"); millor?.classList.add("ara"); liniaAra = millor;
+$("ccols").onclick = (e) => { const d = e.target.closest("[data-t]"); if (d && d.dataset.t !== "") { salta(+d.dataset.t); S.sel = +d.dataset.t; } };
+// Si fas scroll a mà, el content deixa de seguir la reproducció una estona
+for (const ev of ["wheel", "touchmove"]) window.addEventListener(ev, () => { CT.maScroll = performance.now(); }, { passive: true });
+function marcaContent(t, sonant) {
+  CT.costats.forEach((c, s) => {
+    // La línia que sona: l'última que ha començat (sense els títols de secció)
+    let i = -1;
+    for (let q = 0; q < c.temps.length; q++) { const x = c.temps[q]; if (x && !x.sec && x.t0 <= t + 0.02) i = q; }
+    const cel = i >= 0 ? c.cel[i] : null;
+    if (cel !== CT.ara[s]) {
+      CT.ara[s]?.classList.remove("ara"); cel?.classList.add("ara"); CT.ara[s] = cel;
+      if (cel) cel.appendChild(CT.cursors[s]); else CT.cursors[s].remove();
+      if (s === 1 && cel && sonant && $("cSegueix").checked && performance.now() - CT.maScroll > 3000) {
+        const r = cel.getBoundingClientRect();
+        if (r.top < innerHeight * 0.15 || r.bottom > innerHeight * 0.75) window.scrollTo({ top: r.top + scrollY - innerHeight * 0.35, behavior: "smooth" });
+      }
+    }
+    // Cursor a la columna que sona i l'acord que sona marcat
+    const x = i >= 0 ? c.temps[i] : null, cur = CT.cursors[s];
+    if (!x || !cel || !x.punts.length || t > x.t1 + 4) { cur.style.display = "none"; }
+    else {
+      cur.style.display = "block";
+      cur.style.left = (4 + interpola(x.punts, t) * CT.chW - cel.scrollLeft) + "px";
+      cur.style.top = (1 + x.fila * 18) + "px";
+    }
+    let k = -1; if (x) x.acords.forEach((ta, q) => { if (ta <= t + 0.02) k = q; });
+    const span = k >= 0 ? cel?.querySelector(`[data-a="${k}"]`) : null;
+    if (span !== CT.acord[s]) { CT.acord[s]?.classList.remove("ara"); span?.classList.add("ara"); CT.acord[s] = span; }
+  });
 }
 
 // ---------- Fonts ----------
 function dibuixaFonts() {
   const T = S.T, tabs = T.tabs, R = T.passos.acords_fonts.resum;
-  if (!tabs.length) { $("fonts").innerHTML = `<div class="panel muted">Aquesta cançó no té tabs.</div>`; return; }
-  const cap = R ? `<div class="panel" style="margin-bottom:10px">${R.valides}/${R.trobades} tabs vàlides en ${R.grups} grups · ` +
+  $("fontsPestanyes").style.display = $("fontsCos").style.display = tabs.length ? "" : "none";
+  if (!tabs.length) {
+    $("fontsResum").innerHTML = `<div class="panel muted">${T.nomes_analisi ? "Sense traça no es veuen les tabs." : "Aquesta cançó no té tabs."}</div>`;
+    return;
+  }
+  $("fontsResum").innerHTML = R ? `<div class="panel" style="margin-bottom:10px">${R.valides}/${R.trobades} tabs vàlides en ${R.grups} grups · ` +
     `${R.confirmats} acords confirmats, <b>${R.substituits} substituïts</b>, ${R.audio} només d'àudio · ${R.afegits} afegits, ${R.trets} trets</div>` : "";
-  $("fonts").innerHTML = cap + tabs.map((tab, i) => {
+  if (S.fontSel >= tabs.length) S.fontSel = 0;
+  $("fontsPestanyes").innerHTML = tabs.map((tab, i) =>
+    `<button data-f="${i}" class="${i === S.fontSel ? "on" : ""} ${tab.used ? "" : "descartada"}" ` +
+    `data-desc="${esc(`${tab.url}<br>${tab.used ? "Feta servir al consens" : `Descartada: ${tab.motiu || "—"}`} · encaix ${pct(tab.fit)} · pes ${tab.weight ?? "—"}`)}">` +
+    `${i + 1}. ${esc(tab.site)} ${tab.used ? "<span class='ok'>✓</span>" : "<span class='bad'>✗</span>"}</button>`).join("");
+  const htmls = tabs.map((tab, i) => {
     const perIdx = new Map((tab.acords || []).map((a) => [a.idx, a]));
     let idx = 0;
     const linies = (tab.linies || []).map((l, li) => {
@@ -1188,14 +1495,26 @@ function dibuixaFonts() {
         ? `<span class="muted">[${esc(tab.seccions[l.seccio]?.nom)}${l.repeticio ? ` ·${l.repeticio + 1}` : ""}]</span>\n` : "";
       return sec + `<span class="linia ${l.repeticio ? "rep" : ""}" ${t != null ? `data-t="${t}"` : ""}>${dalt && l.text ? dalt + "\n" : dalt}${esc(l.text || "")}${l.heretada ? " <span class='muted'>(acords heretats)</span>" : ""}</span>`;
     }).join("\n");
-    return `<div class="panel tab ${tab.used ? "" : "descartada"}"><h3>${i + 1}. ${esc(tab.site)} ${tab.used ? "<span class='ok'>✓ usada</span>" : `<span class="bad">✗ ${esc(tab.motiu || "descartada")}</span>`}</h3>` +
+    return `<div class="tab ${tab.used ? "" : "descartada"}"><h3>${i + 1}. ${esc(tab.site)} ${tab.used ? "<span class='ok'>✓ usada</span>" : `<span class="bad">✗ ${esc(tab.motiu || "descartada")}</span>`}</h3>` +
       `<div class="petit"><a href="${esc(tab.url)}" target="_blank" rel="noopener">${esc(tab.url)}</a></div>` +
       `<div class="petit muted">pes ${tab.weight} · grup ${tab.group ?? "—"} · encaix ${pct(tab.fit)} · lletra aparellada ${pct(tab.matched)} · transport ${tab.transport ?? "—"} · capo ${tab.capo} · ` +
       `valoració ${tab.rating ?? "—"} (${tab.votes ?? "—"} vots)${tab.manual ? " · manual" : ""} · ${(tab.acords || []).length} acords alineats</div>` +
       `<pre>${linies}</pre></div>`;
-  }).join("");
+  });
+  fontsHtml = htmls;
+  mostraFont(S.fontSel);
 }
-$("fonts").onclick = (e) => { const d = e.target.closest("[data-t]"); if (d) { salta(+d.dataset.t); S.sel = +d.dataset.t; } };
+// Una tab a la vegada, al mateix lloc: en canviar de pestanya es conserva el scroll per comparar-les
+let fontsHtml = [];
+function mostraFont(i) {
+  const pre = $("fontsCos").querySelector("pre"), scroll = pre ? pre.scrollTop : 0;
+  S.fontSel = i;
+  for (const b of $("fontsPestanyes").children) b.classList.toggle("on", +b.dataset.f === i);
+  $("fontsCos").innerHTML = fontsHtml[i] || "";
+  const nou = $("fontsCos").querySelector("pre"); if (nou) nou.scrollTop = scroll;
+}
+$("fontsPestanyes").onclick = (e) => { const b = e.target.closest("[data-f]"); if (b) mostraFont(+b.dataset.f); };
+$("fontsCos").onclick = (e) => { const d = e.target.closest("[data-t]"); if (d) { salta(+d.dataset.t); S.sel = +d.dataset.t; } };
 
 // ---------- Seccions ----------
 function dibuixaSeccions() {
@@ -1323,7 +1642,7 @@ $("bAgregat").onclick = async () => {
     if (!agregant) break;
     $("agregat").innerHTML = `<span class="muted">Llegint les traces: ${k + 1}/${cancons.length} · ${esc(c.titol)}${c.traca ? "" : " (calculant…)"}</span>` + taulaAgregat(per, perCanco);
     try {
-      const T = indexa(await obte(`/api/traca/${c.clau}`));
+      const T = indexa(await obte(`${API}/traca/${c.clau}`));
       c.traca = true;
       const p = detecta(T), tipus = new Map();
       for (const [t] of p) tipus.set(t, (tipus.get(t) || 0) + 1);
@@ -1353,15 +1672,27 @@ $("bTema").onclick = () => { const t = document.documentElement.dataset.theme ==
 
 (async function inici() {
   const h = new URLSearchParams(location.hash.slice(1));
-  S.runs = await obte("/api/runs");
-  S.run = h.get("run") || S.runs[0] || null;
-  S.compara = h.get("compara") || null;
-  $("sRun").innerHTML = S.runs.map((r) => `<option>${esc(r)}</option>`).join("");
-  $("sCompara").innerHTML = "<option value=''>—</option>" + S.runs.map((r) => `<option>${esc(r)}</option>`).join("");
-  $("sRun").value = S.run || ""; $("sCompara").value = S.compara || "";
+  // El tema de qui l'obre (l'app o la web), si el diu
+  if (h.get("tema")) { const t = h.get("tema") === "fosc" ? "dark" : "light"; document.documentElement.dataset.theme = t; }
+  if (WEB) {
+    $("subLlista").style.display = "none";
+    document.querySelector(".marca").innerHTML = "<b>Transcriptor</b> · depurador del canconer";
+  } else {
+    S.banc = (await obte(`${API}/config`).catch(() => ({}))).banc || false;
+    if (!S.banc) $("subLlista").style.display = "none";
+  }
+  if (S.banc) {
+    $("gBanc").style.display = "";
+    S.runs = await obte(`${API}/runs`);
+    S.run = h.get("run") || S.runs[0] || null;
+    S.compara = h.get("compara") || null;
+    $("sRun").innerHTML = S.runs.map((r) => `<option>${esc(r)}</option>`).join("");
+    $("sCompara").innerHTML = "<option value=''>—</option>" + S.runs.map((r) => `<option>${esc(r)}</option>`).join("");
+    $("sRun").value = S.run || ""; $("sCompara").value = S.compara || "";
+    await carregaLlista();
+  }
   if (h.get("z")) S.t1 = S.t0 + +h.get("z");
   if (h.get("t")) S.sel = +h.get("t");
-  await carregaLlista();
   mostraLlista(S.llista);
   if (h.get("id")) await obreCanco(h.get("id"), h.get("v") || "temps");
   else mostraVista("llista");

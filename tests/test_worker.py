@@ -295,3 +295,52 @@ def test_actualitzacio_sense_dades_crues_ni_cache_es_refa_sencera(worker_fals):
         assert 7 in s.resultats
     finally:
         s.tanca()
+
+
+def test_el_resultat_porta_la_traca_per_al_depurador(worker_fals, monkeypatch):
+    import base64
+
+    from transcriptor.depura import genera
+
+    rebudes = []
+
+    def per_al_canconer(feina, entrada, res, traca, *a):
+        rebudes.append((feina["id"], entrada.font, traca))
+        return b"traca-gz"
+
+    def pipeline(entrada, **kw):
+        assert kw["traca"] is not None  # el pipeline grava els passos
+        r = _resultat_fals()
+        r.crues = object()
+        return r
+
+    monkeypatch.setattr(genera, "per_al_canconer", per_al_canconer)
+    monkeypatch.setattr(worker_mod, "empaqueta", lambda c: b"crues")
+    s = Servidor([FEINA])
+    try:
+        worker_fals(s, pipeline=pipeline).bucle(una=True)
+        assert rebudes and rebudes[0][:2] == (7, FEINA["source_url"])
+        assert base64.b64decode(s.resultats[7]["trace"]) == b"traca-gz"
+    finally:
+        s.tanca()
+
+
+def test_si_la_traca_falla_el_resultat_s_envia_igual(worker_fals, monkeypatch):
+    from transcriptor.depura import genera
+
+    def falla(*a):
+        raise RuntimeError("traça")
+
+    def pipeline(entrada, **kw):
+        r = _resultat_fals()
+        r.crues = object()
+        return r
+
+    monkeypatch.setattr(genera, "per_al_canconer", falla)
+    monkeypatch.setattr(worker_mod, "empaqueta", lambda c: b"crues")
+    s = Servidor([FEINA])
+    try:
+        worker_fals(s, pipeline=pipeline).bucle(una=True)
+        assert 7 in s.resultats and "trace" not in s.resultats[7]
+    finally:
+        s.tanca()

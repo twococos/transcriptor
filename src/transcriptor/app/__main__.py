@@ -518,7 +518,7 @@ class LlistaFetes(ttk.Frame):
         oberta = feta.dir == self.oberta
         botons = (
             ("esborra", "Esborra", lambda: self.app.esborra(feta), False),
-            ("visor", "Obre al visor", lambda: self.app.obre_visor(feta), True),
+            ("visor", "Obre al depurador", lambda: self.app.obre_visor(feta), True),
             ("plega" if oberta else "desplega", "Amaga els detalls" if oberta else "Detalls",
              lambda: self._commuta(feta), False),
         )
@@ -676,7 +676,7 @@ class App:
         self.mostres: collections.deque = collections.deque(maxlen=20)  # (temps, bytes) per a la velocitat
         self.bytes_descarregats = 0
         self.aturant = False
-        self.visors: dict[Path, str] = {}  # directori de la cançó → URL del seu servidor
+        self.depurador: str | None = None  # URL del servidor del depurador, quan s'ha obert
         self.n_historial = 0
         self.font_icones: str | None = None
         self.classificacions, self.classificacions_rebut = classificacions.carrega_desades()
@@ -1000,18 +1000,22 @@ class App:
         webbrowser.open((dir_app() / "transcriptor.log").as_uri())
 
     def obre_visor(self, feta: fetes.Feta) -> None:
-        url = self.visors.get(feta.dir)
-        if not url:
-            from ..visor import inicia
+        """Obre la cançó al depurador (depura/): el visor amb YouTube i cada pas del postprocés, refet
+        amb les dades crues de la cache. La llista del depurador mostra les caches d'aquest ordinador."""
+        from urllib.parse import quote
 
-            try:
-                srv, url, _analisi, _audio = inicia(feta.dir)
-            except (OSError, ValueError) as e:
-                messagebox.showerror("Transcriptor", f"No s'ha pogut obrir el visor: {e}")
-                return
-            threading.Thread(target=srv.serve_forever, daemon=True, name=f"visor-{feta.dir.name}").start()
-            self.visors[feta.dir] = url
-        webbrowser.open(url + ("?tema=fosc" if self.fosc else "?tema=clar"))  # el visor segueix el tema de l'app
+        from ..depura import origens, servidor
+
+        try:
+            if not self.depurador:
+                srv, self.depurador = servidor.inicia(0)
+                threading.Thread(target=srv.serve_forever, daemon=True, name="depurador").start()
+            clau = servidor.clau_de(str(feta.dir))
+        except (OSError, ValueError, origens.ErrorOrigen) as e:
+            messagebox.showerror("Transcriptor", f"No s'ha pogut obrir el depurador: {e}")
+            return
+        # El depurador segueix el tema de l'app
+        webbrowser.open(f"{self.depurador}#id={quote(clau)}&v=temps&tema={'fosc' if self.fosc else 'clar'}")
 
     def esborra(self, feta: fetes.Feta) -> None:
         if messagebox.askyesno("Transcriptor", f"Vols esborrar «{feta.nom}» d'aquest ordinador?\n\n"

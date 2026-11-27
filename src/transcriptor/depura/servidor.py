@@ -5,9 +5,9 @@ canviar el postprocés, n'hi ha prou amb recarregar la cançó (no cal reiniciar
 
 Rutes:
 - `/`: la pàgina.
+- `/api/config`: què hi ha en aquest ordinador (`{banc}`: si hi ha el banc de proves).
 - `/api/runs`: les execucions del banc.
 - `/api/cancons?run=&compara=`: les cançons del banc amb les mètriques de dos runs.
-- `/api/web?q=`: les cançons del canconer amb anàlisi (web.py).
 - `/api/locals`: les caches locals (origens.locals_).
 - `/api/traca/<clau>[?refes=1]`: la traça (vegeu genera.py per a les claus).
 - `/api/run/<nom>/<id>`: l'anàlisi i el content d'una execució desada del banc.
@@ -31,13 +31,13 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
 from ..visor import envia_audio
-from . import genera, origens, web
+from . import genera, origens
 
 log = logging.getLogger(__name__)
 
 PAGINA = Path(__file__).with_name("depura.html")
 RESULTATS = Path("work/bench/resultats")
-RE_CLAU = re.compile(r"^(banc-\d+|web-\d+|local-[wa]-[\w.-]+|fitxer-[0-9a-f]+)$")
+RE_CLAU = re.compile(r"^(banc-\d+|local-[wa]-[\w.-]+|fitxer-[0-9a-f]+)$")
 
 _bloquejos: dict[str, threading.Lock] = {}
 _bloqueig_global = threading.Lock()
@@ -149,18 +149,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if not parts or parts == ["index.html"]:
                 self._envia(PAGINA.read_bytes(), "text/html; charset=utf-8")
+            elif parts == ["api", "config"]:
+                self._json({"banc": origens.DATASET.exists()})
             elif parts == ["api", "runs"]:
                 self._json(runs())
             elif parts == ["api", "cancons"]:
                 self._json(cancons(q.get("run"), q.get("compara")))
             elif parts == ["api", "locals"]:
                 self._json(origens.locals_())
-            elif parts == ["api", "web"]:
-                try:
-                    api, token = web.credencials()
-                    self._json({"web": api, "cancons": web.llista(q.get("q", ""))})
-                except web.ErrorWeb as e:
-                    self._json({"web": web.credencials()[0], "error": str(e)}, 502)
             elif len(parts) == 3 and parts[:2] == ["api", "traca"] and RE_CLAU.match(parts[2]):
                 estat, dades = traca(parts[2], q.get("refes") == "1")
                 self._envia(dades, estat=estat)
@@ -190,25 +186,30 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
 
 
-def serveix(port: int = 8766, obre: bool = True, que: str | None = None, api: str | None = None,
-            token: str | None = None) -> int:
-    """`que`: una clau (banc-100, web-5…) o el camí d'un analysis.json per obrir de seguida."""
-    if api:
-        os.environ["TX_API"] = api
-    if token:
-        os.environ["TX_TOKEN"] = token  # els subprocessos (genera.py) l'hereten
+def clau_de(que: str) -> str:
+    """Una clau (banc-100, local-w-…) o el camí d'un analysis.json → la clau. ErrorOrigen si no."""
+    clau = origens.normalitza_clau(que)
+    return clau if RE_CLAU.match(clau) else origens.registra_fitxer(que)
+
+
+def inicia(port: int = 0) -> tuple[ThreadingHTTPServer, str]:
+    """El servidor (sense engegar) i la seva URL. L'app l'engega en un fil i hi obre les cançons."""
+    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    # localhost i no 127.0.0.1: YouTube no deixa reproduir incrustats alguns vídeos des d'una adreça IP
+    return srv, f"http://localhost:{srv.server_address[1]}/"
+
+
+def serveix(port: int = 8766, obre: bool = True, que: str | None = None) -> int:
+    """`que`: una clau (banc-100, local-w-…) o el camí d'un analysis.json per obrir de seguida."""
     clau = None
     if que:
         try:
-            clau = origens.normalitza_clau(que)
-            if not RE_CLAU.match(clau):
-                clau = origens.registra_fitxer(que)
+            clau = clau_de(que)
         except origens.ErrorOrigen as e:
             print(e)
             return 1
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    # localhost i no 127.0.0.1: YouTube no deixa reproduir incrustats alguns vídeos des d'una adreça IP
-    url = f"http://localhost:{srv.server_address[1]}/" + (f"#id={quote(clau)}&v=temps" if clau else "")
+    srv, base = inicia(port)
+    url = base + (f"#id={quote(clau)}&v=temps" if clau else "")
     print(f"Depurador: {url}\n(Ctrl+C per aturar)")
     if obre:
         threading.Timer(0.3, webbrowser.open, args=(url,)).start()

@@ -3,21 +3,17 @@
 Cada cançó té una clau:
 - `banc-<id>`: work/bench/dataset.jsonl, amb l'àudio a work/bench/audio i la cache a work/cache.
   La referència és el content de la BD (còpia del banc).
-- `web-<id>`: una cançó del canconer amb anàlisi (web.py). Es baixa a work/depura/web/<id>.json el
-  mateix que rebria un worker en una feina `update` i es refà el postprocés amb les seves dades
-  crues. Si el canconer no en té, es busquen a les caches locals (yt-<vídeo>); si tampoc, només es
-  mostra l'anàlisi. La referència és el content de la cançó, i l'anàlisi desada es compara.
 - `local-w-<cache>` / `local-a-<cache>`: una cache local (w: work/cache; a: la de l'app, a
   %LOCALAPPDATA%/Transcriptor/dades/cache), de `tx run` o del worker de l'app. Sense referència; si
   hi ha l'anàlisi desada (fetes de l'app o out/ de `tx run`), es compara.
 - `fitxer-<hash>`: un analysis.json qualsevol (`tx depura <fitxer>`) sense cache: només l'anàlisi.
 
-El postprocés mai calcula etapes cares: només fa servir dades crues ja fetes.
+El postprocés mai calcula etapes cares: només fa servir dades crues ja fetes. Les cançons del
+canconer es veuen al depurador de la web, amb la traça que hi puja el worker amb cada resultat.
 """
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import os
@@ -27,11 +23,10 @@ from pathlib import Path
 from ..cache import Cache
 from ..config import Config, dir_base
 from ..device import Perfil, detecta
-from ..paquet import Crues, de_cache, desempaqueta
+from ..paquet import Crues, de_cache
 from ..pipeline import Entrada, SenseDadesCrues, crues
-from ..schema import SongAnalysis, de_compacte
+from ..schema import SongAnalysis
 from ..stages.fetch import id_canco, youtube_id
-from .. import versions
 
 DATASET = Path("work/bench/dataset.jsonl")
 AUDIO = Path("work/bench/audio")
@@ -44,7 +39,7 @@ class ErrorOrigen(Exception):
 
 @dataclass
 class Origen:
-    origen: str  # banc | web | local | fitxer
+    origen: str  # banc | local | fitxer
     id: str | int
     titol: str
     artista: str
@@ -91,7 +86,7 @@ def audio_de(id_c: int | str) -> Path | None:
 
 
 def normalitza_clau(clau: str) -> str:
-    """"100" → banc-100, "web:5" → web-5."""
+    """"100" → banc-100, "local:w-yt-…" → local-w-yt-…."""
     clau = clau.strip().replace(":", "-", 1)
     return f"banc-{clau}" if clau.isdigit() else clau
 
@@ -135,8 +130,6 @@ def prepara(clau: str, refes: bool = False) -> Origen:
     try:
         if tipus == "banc":
             return _banc(int(resta))
-        if tipus == "web":
-            return _web(int(resta), refes)
         if tipus == "local":
             base, _, cache_id = resta.partition("-")
             return _local(base, cache_id)
@@ -169,63 +162,6 @@ def _banc(id_c: int) -> Origen:
     return Origen(origen="banc", id=id_c, titol=canco["title"], artista=canco["artist"],
                   youtube_id=youtube_id(canco.get("youtube_url") or ""), entrada=entrada, dades=dades, cache=cache,
                   referencia=canco, audio=audio, perfil=perfil, info={"estat": canco["state"]})
-
-
-def _web(id_c: int, refes: bool) -> Origen:
-    from . import web
-
-    f = dir_traces() / "web" / f"{id_c}.json"
-    if refes or not f.exists():
-        try:
-            d = web.canco(id_c)
-        except web.ErrorWeb as e:
-            if not f.exists():
-                raise ErrorOrigen(str(e)) from e
-            d = None  # sense xarxa: les dades baixades l'última vegada
-        if d is not None:
-            f.parent.mkdir(parents=True, exist_ok=True)
-            f.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
-    d = json.loads(f.read_text(encoding="utf-8"))
-    yt = youtube_id(d.get("source_url") or "")
-    # La mateixa entrada que el worker (worker.Worker._executa)
-    entrada = Entrada(font=d.get("source_url") or f"web-{id_c}", titol=d.get("title"), artista=d.get("artist"),
-                      idioma=d.get("language"), content_bd=d.get("song_content"),
-                      content_huma=bool(d.get("song_content_human")),
-                      urls_acords=list(d.get("chord_source_urls") or []),
-                      urls_bloquejades=list(d.get("chord_source_blocked") or []))
-    previa = de_compacte(d["analysis"]) if d.get("analysis") else None
-    avisos, dades = [], None
-    if d.get("raw"):
-        dades = desempaqueta(base64.b64decode(d["raw"]))
-        if versions.crues_a_refer(dades.versio):
-            avisos.append(f"Les dades crues són de la {dades.versio}, d'abans d'un canvi de model "
-                          f"({', '.join(sorted(versions.crues_a_refer(dades.versio)))}): un worker refaria la cançó sencera")
-    elif (local := _cache_local(yt)) is not None:
-        dades = de_cache(local, previa.source.duration_s if previa else None)
-        avisos.append(f"El canconer no té les dades crues: es fan servir les de la cache local {local}")
-    elif previa is None:
-        raise ErrorOrigen(f"La cançó {id_c} no té anàlisi")
-    else:
-        avisos.append("El canconer no té les dades crues d'aquesta cançó (anàlisi d'abans de la 0.1.9) i no són a "
-                      "cap cache local: només es mostra l'anàlisi desada")
-    desada = None
-    if previa is not None:
-        desada = {"nom": f"Web ({d.get('analysis_app_version') or '?'})", "analisi": previa.model_dump(mode="json"),
-                  "content": d.get("transcriber_content") or ""}
-    referencia = {"id": id_c, "title": d.get("title") or "", "artist": d.get("artist") or "",
-                  "state": d.get("state"), "content": d.get("song_content") or "", "key": d.get("key") or "",
-                  "capo": d.get("capo") or 0}
-    local = _cache_local(yt)
-    audio = local / "audio.wav" if local and (local / "audio.wav").exists() else None
-    api, _ = web.credencials()
-    return Origen(origen="web", id=id_c, titol=d.get("title") or "", artista=d.get("artist") or "", youtube_id=yt,
-                  entrada=entrada, dades=dades, cache=Cache(f"web-{id_c}", base=dir_traces() / "cache"),
-                  previa=previa, referencia=referencia if referencia["content"] else None, desada=desada,
-                  audio=audio, avisos=avisos,
-                  info={"web": api, "content_huma": d.get("song_content_human"),
-                        "versio_analisi": d.get("analysis_app_version"), "versio_crues": d.get("raw_app_version"),
-                        "analitzada": d.get("analyzed_at"), "tabs_manuals": d.get("chord_source_urls"),
-                        "tabs_bloquejades": d.get("chord_source_blocked")})
 
 
 def _local(base: str, cache_id: str) -> Origen:
@@ -334,12 +270,6 @@ def audio_de_clau(clau: str) -> Path | None:
         d = dirs_cache().get(base)
         f = d / cache_id / "audio.wav" if d and "/" not in cache_id and "\\" not in cache_id else None
         return f if f and f.exists() else None
-    if tipus == "web":
-        f = dir_traces() / "web" / f"{resta}.json"
-        if f.exists():
-            local = _cache_local(youtube_id(json.loads(f.read_text(encoding="utf-8")).get("source_url") or ""))
-            if local and (local / "audio.wav").exists():
-                return local / "audio.wav"
     if tipus == "fitxer":
         try:
             return _fitxer(resta).audio

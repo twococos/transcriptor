@@ -5,8 +5,6 @@
 La clau diu d'on surt la cançó (vegeu origens.py):
 - `banc-<id>`: una cançó del banc. Repeteix el postprocés com `tx bench` (mateixa configuració i
   cache), només amb el que ja és a la cache (`sense_audio`): si hi falta alguna etapa, falla.
-- `web-<id>`: una cançó del canconer. Es baixen les dades que rebria un worker en una feina
-  `update` (dades crues, content, fonts d'acords, anàlisi) i es refà el postprocés com ell.
 - `local-<w|a>-<cache>`: una cache local (w: la de work/, de `tx run` o del banc; a: la de l'app).
 - `fitxer-<hash>`: un analysis.json sense dades crues: només es mostra l'anàlisi.
 
@@ -153,6 +151,58 @@ def _passos_de_analisi(a: SongAnalysis, content: str) -> dict:
     })
 
 
+def completa(traca: Traca, res, entrada, cfg: Config, perfil, cache, dades, previa, ref: dict | None) -> dict:
+    """La part de la traça que surt d'una execució del pipeline feta amb `traca`: el content sense tabs
+    (una segona passada del postprocés), la referència al temps, les mètriques i les rodes. La fan
+    servir el depurador i el worker (que la puja al canconer amb el resultat)."""
+    sense = executa(entrada, cfg.model_copy(update={"fonts_acords": False}), perfil, cache, dades=dades,
+                    previa=previa)
+    a = res.analisi
+    try:
+        metriques = net(avalua(ref, res.content, a)) if ref else None
+    except Exception:  # noqa: BLE001 — una referència estranya no ha d'impedir la traça
+        log.warning("No s'han pogut calcular les mètriques de la referència", exc_info=True)
+        metriques = None
+    return {
+        "nomes_analisi": False,
+        "passos": traca.a_dict(),
+        "analisi": a.model_dump(mode="json"),
+        "content": res.content,
+        "sense_fonts": {"content": sense.content, "capo": sense.analisi.capo_suggerit,
+                        "acords": [c.model_dump(mode="json") for c in sense.analisi.chords],
+                        "seccions": [s.model_dump(mode="json") for s in sense.analisi.sections]},
+        "referencia": net(_referencia(ref["content"] if ref else None, res.content, res.elements, a.words,
+                                      a.capo_suggerit)),
+        "metriques": metriques,
+        "rodes": net(_rodes(res.elements, traca.passos["final"]["seccions"])),
+    }
+
+
+def per_al_canconer(feina: dict, entrada, res, traca: Traca, cfg: Config, perfil, cache, previa,
+                    segons: float) -> bytes:
+    """La traça d'una feina del worker, en gzip, per pujar-la amb el resultat: el depurador de l'admin
+    del canconer la mostra igual que `tx depura`. La referència és el content de la cançó si l'ha
+    escrit una persona."""
+    import gzip
+
+    id_canco = feina.get("song_id")
+    ref = None
+    if feina.get("song_content") and feina.get("song_content_human"):
+        ref = {"id": id_canco, "title": feina.get("title") or "", "artist": feina.get("artist") or "",
+               "state": None, "content": feina["song_content"], "key": feina.get("key") or "",
+               "capo": feina.get("capo") or 0}
+    a = res.analisi
+    resta = completa(traca, res, entrada, cfg, perfil, cache, res.crues, previa, ref)
+    dades = {"clau": f"web-{id_canco}" if id_canco else None, "origen": "web", "id": id_canco,
+             "titol": a.meta.title or feina.get("title") or "", "artista": a.meta.artist or feina.get("artist") or "",
+             "youtube_id": a.source.youtube_id, "audio_local": False, "codi": __version__, "versio": __version__,
+             "generat": time.strftime("%Y-%m-%d %H:%M:%S"), "avisos": [], "desada": None,
+             "info": {"feina": feina.get("id"), "mode": feina.get("mode") or "new",
+                      "content_huma": bool(feina.get("song_content_human"))},
+             "segons": round(segons, 1), **resta}
+    return gzip.compress(json.dumps(dades, ensure_ascii=False, separators=(",", ":")).encode("utf-8"), 6)
+
+
 def genera(clau: str, refes: bool = False) -> dict:
     t0 = time.perf_counter()
     o = origens.prepara(clau, refes)
@@ -176,28 +226,14 @@ def genera(clau: str, refes: bool = False) -> dict:
     perfil = o.perfil or detecta("cpu")
     traca = Traca()
     res = executa(o.entrada, cfg, perfil, o.cache, dades=o.dades, previa=o.previa, traca=traca)
-    sense = executa(o.entrada, cfg.model_copy(update={"fonts_acords": False}), perfil, o.cache, dades=o.dades,
-                    previa=o.previa)
-    a = res.analisi
-    return {
-        **base, "nomes_analisi": False, "segons": round(time.perf_counter() - t0, 1),
-        "passos": traca.a_dict(),
-        "analisi": a.model_dump(mode="json"),
-        "content": res.content,
-        "sense_fonts": {"content": sense.content, "capo": sense.analisi.capo_suggerit,
-                        "acords": [c.model_dump(mode="json") for c in sense.analisi.chords],
-                        "seccions": [s.model_dump(mode="json") for s in sense.analisi.sections]},
-        "referencia": net(_referencia(ref["content"] if ref else None, res.content, res.elements, a.words,
-                                      a.capo_suggerit)),
-        "metriques": net(avalua(ref, res.content, a)) if ref else None,
-        "rodes": net(_rodes(res.elements, traca.passos["final"]["seccions"])),
-    }
+    resta = completa(traca, res, o.entrada, cfg, perfil, o.cache, o.dades, o.previa, ref)
+    return {**base, "segons": round(time.perf_counter() - t0, 1), **resta}
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    p.add_argument("clau", help="banc-<id>, web-<id>, local-<w|a>-<cache> o fitxer-<hash>")
-    p.add_argument("--refes", action="store_true", help="La torna a calcular (i a baixar, si és de la web)")
+    p.add_argument("clau", help="banc-<id>, local-<w|a>-<cache> o fitxer-<hash>")
+    p.add_argument("--refes", action="store_true", help="La torna a calcular")
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     clau = origens.normalitza_clau(args.clau)

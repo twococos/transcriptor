@@ -32,8 +32,9 @@ from .config import Config
 from .device import Perfil, detecta
 from .paquet import desempaqueta, empaqueta
 from .pipeline import FASES, Entrada, Resultat, SenseDadesCrues, executa
-from .schema import a_compacte, de_compacte
+from .schema import SongAnalysis, a_compacte, de_compacte
 from .stages.fetch import ErrorDescarrega, id_canco
+from .traca import Traca
 
 log = logging.getLogger(__name__)
 
@@ -111,12 +112,14 @@ class Client:
         r.raise_for_status()
 
     def resultat(self, id_feina: int, proposta: dict, analisi: dict, stats: dict | None = None,
-                 crues: bytes | None = None) -> None:
+                 crues: bytes | None = None, traca: bytes | None = None) -> None:
         dades = {"proposal": proposta, "analysis": analisi}
         if stats:
             dades["stats"] = stats
         if crues:
             dades["raw"] = base64.b64encode(crues).decode("ascii")
+        if traca:  # per al depurador de l'admin (depura/genera.py); els canconers antics l'ignoren
+            dades["trace"] = base64.b64encode(traca).decode("ascii")
         self._post(f"/jobs/{id_feina}/result", dades).raise_for_status()
 
     def jo(self) -> dict:
@@ -137,6 +140,14 @@ class Client:
                                                   "kind": "permanent" if permanent else "temporary"})
         except requests.RequestException as e:
             log.warning("No s'ha pogut notificar la fallada: %s", e)
+
+
+def entrada_de_feina(feina: dict) -> Entrada:
+    return Entrada(font=feina["source_url"], titol=feina.get("title"), artista=feina.get("artist"),
+                   idioma=feina.get("language"), text_usuari=feina.get("lyrics_text"),
+                   content_bd=feina.get("song_content"), content_huma=bool(feina.get("song_content_human")),
+                   urls_acords=list(feina.get("chord_source_urls") or []),
+                   urls_bloquejades=list(feina.get("chord_source_blocked") or []))
 
 
 class Worker:
@@ -193,23 +204,26 @@ class Worker:
         if self.atura.is_set():
             raise InterruptedError
 
-    def _executa(self, feina: dict, cache: Cache) -> Resultat:
-        """El pipeline per a la feina. En una `update`, pel camí més ràpid (vegeu la capçalera)."""
-        entrada = Entrada(font=feina["source_url"], titol=feina.get("title"), artista=feina.get("artist"),
-                          idioma=feina.get("language"), text_usuari=feina.get("lyrics_text"),
-                          content_bd=feina.get("song_content"), content_huma=bool(feina.get("song_content_human")),
-                          urls_acords=list(feina.get("chord_source_urls") or []),
-                          urls_bloquejades=list(feina.get("chord_source_blocked") or []))
-        args = dict(cfg=self.cfg, perfil=self.perfil, cache=cache, en_fase=self._en_fase, comprova=self._comprova)
+    @staticmethod
+    def _previa(feina: dict) -> SongAnalysis | None:
+        if feina.get("mode") != "update" or not feina.get("analysis"):
+            return None
+        try:
+            return de_compacte(feina["analysis"])
+        except (ValueError, KeyError):
+            log.warning("Feina %s: l'anàlisi anterior no es pot llegir", feina["id"], exc_info=True)
+            return None
+
+    def _executa(self, feina: dict, cache: Cache, traca: Traca | None = None) -> Resultat:
+        """El pipeline per a la feina. En una `update`, pel camí més ràpid (vegeu la capçalera).
+        `traca`: hi desa cada pas del postprocés, per al depurador."""
+        entrada = entrada_de_feina(feina)
+        args = dict(cfg=self.cfg, perfil=self.perfil, cache=cache, en_fase=self._en_fase, comprova=self._comprova,
+                    traca=traca)
         if feina.get("mode") != "update":
             return executa(entrada, **args)
 
-        previa = None
-        if feina.get("analysis"):
-            try:
-                previa = de_compacte(feina["analysis"])
-            except (ValueError, KeyError):
-                log.warning("Feina %s: l'anàlisi anterior no es pot llegir", feina["id"], exc_info=True)
+        previa = self._previa(feina)
         if feina.get("raw"):
             try:
                 dades = desempaqueta(base64.b64decode(feina["raw"]))
@@ -243,7 +257,8 @@ class Worker:
         inici = time.perf_counter()
         cache = Cache(id_canco(feina["source_url"]))
         try:
-            res = self._executa(feina, cache)
+            traca = Traca()
+            res = self._executa(feina, cache, traca)
             self._en_fase(len(FASES), "Enviant el resultat")
             if perduda.is_set():
                 raise FeinaPerduda(id_feina)
@@ -257,8 +272,17 @@ class Worker:
                     crues = empaqueta(res.crues)
                 except Exception:  # noqa: BLE001 — sense dades crues el resultat serveix igual
                     log.warning("No s'han pogut empaquetar les dades crues", exc_info=True)
+            traca_gz = None
+            if res.crues is not None:
+                try:
+                    from .depura.genera import per_al_canconer
+
+                    traca_gz = per_al_canconer(feina, entrada_de_feina(feina), res, traca, self.cfg, self.perfil,
+                                               cache, self._previa(feina), time.perf_counter() - inici)
+                except Exception:  # noqa: BLE001 — sense traça el resultat serveix igual
+                    log.warning("No s'ha pogut fer la traça per al depurador", exc_info=True)
             self.client.resultat(id_feina, res.proposta.model_dump(), a_compacte(res.analisi),
-                                 res.estadistiques or None, crues)
+                                 res.estadistiques or None, crues, traca_gz)
             durada = time.perf_counter() - inici
             self.estat.fetes += 1
             self.estat.temps_mitja_s += (durada - self.estat.temps_mitja_s) / self.estat.fetes
