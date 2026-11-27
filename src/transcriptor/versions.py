@@ -27,6 +27,7 @@ CANVIS: dict[str, set[str]] = {
     "0.1.13": {POSTPROCES},  # acords per patrons de compàs; seccions contigües, a terra i amb l'acord després del títol
     "0.1.14": {POSTPROCES},  # acords i seccions contrastats amb tabs d'internet (fonts/)
     "0.1.15": {POSTPROCES},  # més fonts d'acords (Cifra Club, E-Chords, AcordesWeb); rodes "(x3)" i cues de secció
+    "0.1.18": {POSTPROCES},  # es refà tot perquè cada anàlisi tingui la traça del depurador (worker ≥ 0.1.17)
 }
 
 

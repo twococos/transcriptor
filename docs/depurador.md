@@ -27,8 +27,9 @@ Executa `tx depura` des del directori del transcriptor. El banc és a `work/benc
   (`../guitarreopuntcat`). Cal fer-ne commit als dos repositoris.
 
 **La traça:**
-- El worker (0.1.17+) puja la traça de cada feina amb el resultat. És el camp `trace` del resultat:
-  un JSON en gzip, en base64, d'uns 40 KB.
+- El worker (0.1.17+) puja la traça de cada feina amb el resultat. La 0.1.18 marca totes les
+  anàlisis anteriors com a desactualitzades, perquè es refacin i en tinguin.
+- La traça és el camp `trace` del resultat: un JSON en gzip, en base64, d'uns 40 KB.
 - El canconer la desa a `song_analysis_traces` (migració 0012).
 - Si un worker antic actualitza la cançó sense traça, la que hi havia s'esborra, perquè ja no és de
   l'anàlisi vigent.
@@ -122,15 +123,15 @@ La traça la graven `pipeline.executa(traca=...)`, `fonts/aplica.aplica` i
 - En directe: compàs, acord actual i següent, secció i línia amb la paraula que sona.
 
 **Línia de temps:**
-- Files en grups que es pleguen. Plegat, només hi ha el resultat; desplegat, també els passos,
-  indentats:
-  - Compassos › pulsacions crues;
+- Files en grups que es pleguen, desplegats per defecte. Plegat, només hi ha el resultat;
+  desplegat, també els passos, indentats i a sobre. De dalt a baix, van de menys a més definitiu:
+  - pulsacions crues › Compassos;
   - BTC: plegada, l'acord més probable; desplegada, els tres;
-  - Acords finals › acords d'àudio, sense tabs;
-  - Tabs: consens › una fila per tab;
-  - Referència › seccions; l'anàlisi comparada › seccions;
-  - Lletra alineada › Whisper cru;
-  - Seccions finals › 1 detectades, 2 amb les tabs;
+  - una fila per tab › Tabs: consens;
+  - acords d'àudio, sense tabs › Acords finals;
+  - seccions › Referència; seccions › l'anàlisi comparada;
+  - Whisper cru › Lletra alineada;
+  - 1 detectades, 2 amb les tabs › Seccions finals;
   - Notes.
 - La casella de l'esquerra amaga la fila. Les amagades surten a sota per tornar-les a mostrar, una a
   una o totes.

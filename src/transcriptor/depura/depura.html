@@ -344,7 +344,7 @@ const API = WEB ? "/api/admin/depurador" : "/api";
 // ---------- Estat ----------
 const S = { runs: [], run: null, compara: null, cancons: [], codi: null, clau: null, T: null, vista: "llista",
   t0: 0, t1: 30, sel: null, bucle: null, notes: [], runB: null, carrils: llegeix("depura-carrils", {}),
-  plegats: llegeix("depura-plegats", {}), banc: false,
+  plegats: llegeix("depura-plegats2", {}), banc: false,
   llista: WEB ? "web" : llegeix("depura-llista", "banc"), web: null, locals: null,
   ca: llegeix("depura-ca", "ref"), cb: llegeix("depura-cb", "final"), fontSel: 0 };
 const VISTES = [["llista", "Llista"], ["temps", "Línia de temps"], ["content", "Content"], ["fonts", "Fonts"],
@@ -632,9 +632,9 @@ function seccionsDe(llista, nom) {
 const ETIQ = 150; // amplada de la columna de noms
 let carrils = [];
 // Files plegables: plegades, només es veu la fila del grup (el resultat); desplegades, també les
-// del procés (indentades). La de BTC passa d'1 a 3 opcions.
-const PLEGATS = { compas: true, btc: true, final: false, consens: true, paraules: true, secFinal: false, ref: true, comp: true };
-const plegat = (id) => S.plegats[id] ?? PLEGATS[id] ?? true;
+// del procés, indentades i a sobre (de dalt a baix, de menys a més definitiu). La de BTC passa
+// d'1 a 3 opcions. Per defecte, tot desplegat.
+const plegat = (id) => S.plegats[id] ?? false;
 const DESC = {
   compas: "<b>Compassos</b>: la graella de pulsacions definitiva (després de corregir les de Beat This), amb el número de cada compàs. És el rellotge de tota l'anàlisi: acords, seccions i rodes es compten en pulsacions i compassos d'aquesta graella.",
   crues: "<b>Pulsacions crues</b>: el que va donar Beat This abans de corregir-ho. Ratlles fines: pulsacions; gruixudes: inicis de compàs. En taronja, les zones on s'ha corregit la graella (pulsacions doblades, forats omplerts, extrems).",
@@ -659,24 +659,24 @@ function muntaCarrils() {
   const T = S.T, P = T.passos;
   const segsFinals = P.acords_fonts.segs, comp = comparacio(), sense = T.sense_fonts?.acords;
   carrils = [
-    { id: "compas", nom: "Compassos", grup: true, h: 24, dib: dibCompas },
     { id: "crues", pare: "compas", nom: "Pulsacions crues", h: 14, dib: dibCrues, tip: tipCrues },
+    { id: "compas", nom: "Compassos", grup: true, h: 24, dib: dibCompas },
     { id: "btc", nom: "BTC", grup: true, h: () => plegat("btc") ? 18 : 48, dib: dibBTC, tip: tipBTC },
-    { id: "final", nom: "Acords finals", grup: true, h: 26, dib: (c, l) => dibSegs(c, l, segsFinals, true), tip: (t) => tipSeg(segsFinals, t) },
-    { id: "audio", pare: "final", nom: "Acords d'àudio", h: 22, dib: (c, l) => dibSegs(c, l, P.acords_audio.segs), tip: (t) => tipSeg(P.acords_audio.segs, t) },
-    ...(sense ? [{ id: "sense", pare: "final", nom: "Sense tabs", h: 20, dib: (c, l) => dibSegs(c, l, sense), tip: (t) => tipSeg(sense, t) }] : []),
-    ...(T.tabs.length ? [{ id: "consens", nom: "Tabs: consens", grup: true, h: 18, dib: dibConsens, tip: tipConsens }] : []),
     ...T.tabs.map((tab, i) => ({ id: "tab" + i, pare: "consens", desc: "tab", nom: `${tab.site}${tab.used ? "" : " ✗"}${tab.transport ? ` (${tab.transport > 0 ? "+" : ""}${tab.transport})` : ""}`,
       h: 20, dib: (c, l) => dibTab(c, l, tab), tip: (t) => tipTab(tab, t) })),
-    ...(teRef() ? [{ id: "ref", nom: nomRef(), grup: true, h: 22, dib: dibRef, tip: tipRef },
-      { id: "secRef", pare: "ref", nom: "Seccions", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(T.referencia.seccions, (s) => s.name)) }] : []),
-    ...(comp ? [{ id: "comp", nom: comp.nom, grup: true, h: 20, dib: (c, l) => dibSegs(c, l, comp.analisi.chords), tip: (t) => tipSeg(comp.analisi.chords, t) },
-      { id: "secComp", pare: "comp", nom: "Seccions", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(comp.analisi.sections, (s) => s.name)) }] : []),
-    { id: "paraules", nom: "Lletra alineada", grup: true, h: 20, dib: dibParaules, tip: tipParaules },
+    ...(T.tabs.length ? [{ id: "consens", nom: "Tabs: consens", grup: true, h: 18, dib: dibConsens, tip: tipConsens }] : []),
+    { id: "audio", pare: "final", nom: "Acords d'àudio", h: 22, dib: (c, l) => dibSegs(c, l, P.acords_audio.segs), tip: (t) => tipSeg(P.acords_audio.segs, t) },
+    ...(sense ? [{ id: "sense", pare: "final", nom: "Sense tabs", h: 20, dib: (c, l) => dibSegs(c, l, sense), tip: (t) => tipSeg(sense, t) }] : []),
+    { id: "final", nom: "Acords finals", grup: true, h: 26, dib: (c, l) => dibSegs(c, l, segsFinals, true), tip: (t) => tipSeg(segsFinals, t) },
+    ...(teRef() ? [{ id: "secRef", pare: "ref", nom: "Seccions", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(T.referencia.seccions, (s) => s.name)) },
+      { id: "ref", nom: nomRef(), grup: true, h: 22, dib: dibRef, tip: tipRef }] : []),
+    ...(comp ? [{ id: "secComp", pare: "comp", nom: "Seccions", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(comp.analisi.sections, (s) => s.name)) },
+      { id: "comp", nom: comp.nom, grup: true, h: 20, dib: (c, l) => dibSegs(c, l, comp.analisi.chords), tip: (t) => tipSeg(comp.analisi.chords, t) }] : []),
     { id: "asr", pare: "paraules", nom: "Whisper (cru)", h: 18, dib: dibASR, tip: tipASR },
-    { id: "secFinal", nom: "Seccions finals", grup: true, h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(P.final.seccions, (s) => s.name)) },
+    { id: "paraules", nom: "Lletra alineada", grup: true, h: 20, dib: dibParaules, tip: tipParaules },
     { id: "secEstructura", pare: "secFinal", nom: "1 · Detectades", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(P.estructura.seccions, (s) => s.name || s.label)) },
     { id: "secFonts", pare: "secFinal", nom: "2 · Amb les tabs", h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(P.seccions_fonts.seccions, (s) => (s.name || s.label) + (s.vot_cua != null ? ` · cua ${s.vot_cua}` : ""))) },
+    { id: "secFinal", nom: "Seccions finals", grup: true, h: 20, dib: (c, l) => dibSeccions(c, l, seccionsDe(P.final.seccions, (s) => s.name)) },
     { id: "notes", nom: "Notes", h: 16, dib: dibNotes },
   ];
   // Sense traça (només l'anàlisi) no hi ha passos intermedis: fora les files que repetirien el resultat
@@ -694,7 +694,7 @@ function mostraCarril(id, on) { S.carrils[id] = on; guarda("depura-carrils", S.c
 function noms() {
   // Noms de les files (a sobre del canvas): plega/desplega, casella per amagar-la i nom amb la descripció
   $("ltNoms").innerHTML = geo.files.map(({ c, y, h }) => {
-    const plega = c.grup && (c.fills || c.id === "btc") ? `<button class="plega" data-plega="${c.id}" title="${plegat(c.id) ? "Desplega" : "Plega"}">${plegat(c.id) ? "▸" : "▾"}</button>` : c.pare ? "" : `<span class="buit"></span>`;
+    const plega = c.grup && (c.fills || c.id === "btc") ? `<button class="plega" data-plega="${c.id}" title="${plegat(c.id) ? "Desplega" : "Plega"}">${plegat(c.id) ? "▸" : "▴"}</button>` : c.pare ? "" : `<span class="buit"></span>`;
     return `<div class="nom-c ${c.pare ? "fill" : ""} ${c.grup ? "grup" : ""}" style="top:${y}px;height:${h}px">${plega}` +
       `<input type="checkbox" checked data-c="${c.id}" title="Amaga la fila"><span class="txt" data-desc="${esc(DESC[c.desc || c.id] || "")}">${esc(c.nom)}</span></div>`;
   }).join("");
@@ -705,7 +705,7 @@ function noms() {
 }
 $("ltNoms").onclick = (e) => {
   const p = e.target.closest("[data-plega]");
-  if (p) { S.plegats[p.dataset.plega] = !plegat(p.dataset.plega); guarda("depura-plegats", S.plegats); redimensiona(); }
+  if (p) { S.plegats[p.dataset.plega] = !plegat(p.dataset.plega); guarda("depura-plegats2", S.plegats); redimensiona(); }
 };
 $("ltNoms").onchange = (e) => { const id = e.target.dataset.c; if (id) mostraCarril(id, e.target.checked); };
 $("amagades").onchange = (e) => {
